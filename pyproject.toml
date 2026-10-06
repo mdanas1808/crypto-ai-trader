@@ -1,0 +1,30 @@
+[project]
+name = "crypto-ai-trader"
+version = "0.1.0"
+description = "Foundation for crypto market analysis and paper trading"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
+    "sqlalchemy",
+    "psycopg[binary]",
+    "alembic",
+    "pandas",
+    "numpy",
+    "httpx",
+    "websockets",
+    "python-dotenv",
+]
+
+[project.optional-dependencies]
+dev = ["pytest", "pytest-asyncio"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+line-length = 100
+ target-version = "py313"
