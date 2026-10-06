@@ -8,3 +8,5 @@ __pycache__/
 *.log
 data/live/
 .DS_Store
+
+*.egg-info/

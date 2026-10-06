@@ -1,10 +1,28 @@
 # Crypto AI Trader
 
-A staged foundation for crypto market analysis and paper trading. Phase 1 provides a small FastAPI health endpoint, environment-based settings, SQLAlchemy connection setup, Alembic scaffolding, and PostgreSQL through Docker Compose.
+A staged foundation for crypto market analysis and paper trading. Phase 1 provides FastAPI, environment-based settings, SQLAlchemy, Alembic, and PostgreSQL through Docker Compose. Phase 2A adds explicitly triggered historical candle ingestion and a read-only database API.
 
-## Phase 1 scope
+## Scope and safety
 
-This project is initially paper-trading only. No real-money trading is enabled. Exchange connectivity and AI trading decisions are not implemented. There are no trading endpoints, trading tables, or application migrations yet.
+The system is initially paper-trading only. No real-money trading is enabled. Exchange authentication, WebSocket ingestion, trading, indicators, strategy logic, and AI analysis are not implemented. Historical market data uses the unauthenticated Binance Spot public REST API only.
+
+## Market data
+
+The client uses Binance's documented public market-data-only base URL `https://data-api.binance.vision` and `GET /api/v3/klines`. It requests only closed candles for the currently supported symbols `BTCUSDT`, `ETHUSDT`, and `SOLUSDT` at `1h` or `4h`. Extend the allowlists in `app/market/constants.py` when new symbols or intervals are approved.
+
+Exchange decimal strings are normalized to Python `Decimal` and persisted in PostgreSQL `NUMERIC(38, 18)`. This stores values as exact base-10 decimals, with up to 20 integer digits and 18 fractional digits. Candle open times are stored as timezone-aware UTC timestamps. The composite primary key `(exchange, symbol, interval, open_time)` prevents duplicates and provides the index used by the candle lookups.
+
+Run the bounded ingestion command explicitly; it does not run at API startup:
+
+```bash
+.venv/bin/python scripts/fetch_candles.py --symbol BTCUSDT --interval 1h --limit 10
+```
+
+The read-only endpoint queries PostgreSQL only and never calls the exchange:
+
+```text
+GET /market/candles?symbol=BTCUSDT&interval=1h&limit=10
+```
 
 ## Local development
 
@@ -12,12 +30,10 @@ Python 3.13 is used on the development VM.
 
 ```bash
 cd ~/crypto-ai-trader
-python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
 ```
 
-The checked-in `.env.example` contains placeholders. A local `.env` is used for development settings; never commit `.env` or put real credentials in it.
+The checked-in `.env.example` contains placeholders. A local `.env` supplies development settings; never commit `.env` or put real credentials in it.
 
 ## PostgreSQL
 
@@ -25,29 +41,24 @@ Start the PostgreSQL 16 container (published only on localhost):
 
 ```bash
 docker compose up -d
+.venv/bin/alembic upgrade head
 ```
 
-Check its status with `docker compose ps`. Stop PostgreSQL with:
-
-```bash
-docker compose down
-```
-
-The named volume preserves database data when the container is stopped.
+Check its status with `docker compose ps`. Stop PostgreSQL with `docker compose down`. The named volume preserves database data when the container is stopped.
 
 ## FastAPI
 
-Activate the virtual environment, then start the API:
+Start the API locally:
 
 ```bash
-source .venv/bin/activate
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
 Health endpoint: `GET http://127.0.0.1:8000/health`
 
 ```bash
 curl http://127.0.0.1:8000/health
+curl 'http://127.0.0.1:8000/market/candles?symbol=BTCUSDT&interval=1h&limit=10'
 ```
 
-Run tests with `pytest`.
+Run tests with `.venv/bin/pytest -v`. The repository and API database tests use a temporary PostgreSQL schema and do not call the exchange.
