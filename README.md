@@ -4,7 +4,7 @@ A staged foundation for crypto market analysis and paper trading. Phase 1 provid
 
 ## Scope and safety
 
-The system is initially paper-trading only. No real-money trading is enabled. Exchange authentication, WebSocket ingestion, trading, strategy logic, and AI analysis are not implemented. Technical indicators are calculated in memory from validated candle sequences. Historical market data uses the unauthenticated Binance Spot public REST API only.
+The system is an offline market-analysis and backtesting foundation. No real-money trading or exchange order execution is enabled. Exchange authentication, WebSocket ingestion, and AI analysis are not implemented. Breakout signals and deterministic simulated execution are calculated locally from validated candle sequences. Historical market data uses the unauthenticated Binance Spot public REST API only.
 
 ## Market data
 
@@ -29,6 +29,10 @@ GET /market/candles?symbol=BTCUSDT&interval=1h&limit=10
 Offline backtest preparation can retrieve one symbol and interval using optional inclusive UTC start and end timestamps, then calculate indicators in memory. Gaps still raise the existing candle-sequence validation error. The walk-forward iterator exposes a copied chronological prefix at each step, so a strategy can only see candles available through that step. This preparation layer does not submit orders or simulate fills.
 
 Multi-timeframe backtest preparation returns separate `context_frame` and `trading_frame` DataFrames. The context contains pre-start 1H history (at least the preceding 20-hour query window) and cannot be confused with rows in the trading frame, which is bounded inclusively by candle open time. An optional earlier `warmup_start_time` loads additional history for indicators. EMA 200 needs 200 observations for its first value, so callers must provide enough prior data when they need warm indicators at the requested start; no additional indicator warm-up range is inferred. Both frames align each 1H decision row to the latest completed 4H candle, using completion `open_time + interval duration` and decision time `1H open_time + 1 hour`. A 4H candle is eligible only when its completion time is at or before that decision time. The returned index is the UTC decision time, 4H fields use the `4h_` prefix, and future candles are never used.
+
+## Offline breakout backtesting
+
+`app/backtest/engine.py` provides a deterministic multi-symbol portfolio runner. It consumes prepared per-symbol multi-timeframe streams and existing breakout signals; it does not call an exchange or persist orders, positions, or indicators. Entries use the next in-range 1H open, Decimal price/fee arithmetic, adverse slippage, fixed ATR stops and 2R targets, and stop-first same-candle handling. A shared spot portfolio applies quantity rounding, cash, open-risk, position-count, and UTC daily-loss limits. Remaining positions are force-closed at the final available in-range close. Configure `BacktestConfig.minimum_quantity` explicitly; no exchange quantity filters are inferred. The engine is a simulation layer and does not submit live or paper orders.
 
 ## Local development
 
