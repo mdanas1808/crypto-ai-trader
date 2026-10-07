@@ -14,8 +14,9 @@ and population standard deviation (``ddof=0``), multiplied by two. Percentage
 price change is ``(close / previous_close - 1) * 100``. No calculation uses a
 future candle, and indicator values are never forward-filled.
 
-Input must be chronological and contain candles for one exchange, symbol, and
-interval. The function validates this contract instead of sorting input.
+Input must be aligned, contiguous, chronological, and contain candles for one
+exchange, symbol, and interval. The function validates this contract instead
+of sorting or repairing input.
 """
 
 from collections.abc import Iterable
@@ -26,6 +27,7 @@ import numpy as np
 import pandas as pd
 
 from app.market.models import Candle
+from app.market.validation import validate_candle_sequence
 
 CANDLE_COLUMNS: Final[tuple[str, ...]] = (
     "exchange",
@@ -169,15 +171,7 @@ def calculate_indicators(candles: Iterable[Candle]) -> pd.DataFrame:
     if any(not isinstance(candle, Candle) for candle in candle_rows):
         raise TypeError("every input row must be an app.market.models.Candle")
 
-    first_candle = candle_rows[0]
-    identity = (first_candle.exchange, first_candle.symbol, first_candle.interval)
-    previous_open_time = first_candle.open_time
-    for candle in candle_rows[1:]:
-        if (candle.exchange, candle.symbol, candle.interval) != identity:
-            raise ValueError("all candles must have the same exchange, symbol, and interval")
-        if candle.open_time <= previous_open_time:
-            raise ValueError("candles must be strictly chronological by open_time")
-        previous_open_time = candle.open_time
+    validate_candle_sequence(candle_rows)
 
     numeric_values = {
         column: _numeric_values(candle_rows, column) for column in _DECIMAL_COLUMNS

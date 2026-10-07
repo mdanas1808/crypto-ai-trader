@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
@@ -6,6 +6,7 @@ from pydantic import ValidationError
 
 from app.market.constants import EXCHANGE
 from app.market.models import Candle
+from app.market.validation import CandleSequenceValidationError, validate_candle_sequence
 
 
 def valid_values() -> dict[str, object]:
@@ -48,3 +49,81 @@ def test_candle_rejects_unsupported_symbol_and_interval() -> None:
         Candle.model_validate({**valid_values(), "symbol": "DOGEUSDT"})
     with pytest.raises(ValidationError, match="unsupported interval"):
         Candle.model_validate({**valid_values(), "interval": "15m"})
+
+
+def candles_at(interval: str, hours: tuple[int, ...]) -> list[Candle]:
+    start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    step = timedelta(hours=int(interval[:-1]))
+    return [
+        Candle.model_validate(
+            {**valid_values(), "interval": interval, "open_time": start + step * hour}
+        )
+        for hour in hours
+    ]
+
+
+def test_sequence_validator_accepts_contiguous_hourly_and_four_hour_candles() -> None:
+    validate_candle_sequence(candles_at("1h", (0, 1, 2)))
+    validate_candle_sequence(candles_at("4h", (0, 1, 2)))
+
+
+@pytest.mark.parametrize(
+    ("interval", "hours", "missing"),
+    [
+        pytest.param("1h", (0, 2), 1, id="one-hour-gap"),
+        pytest.param("1h", (0, 3), 2, id="multiple-hour-gaps"),
+        pytest.param("4h", (0, 2), 1, id="four-hour-gap"),
+    ],
+)
+def test_sequence_validator_reports_gap_context(
+    interval: str, hours: tuple[int, ...], missing: int
+) -> None:
+    candles = candles_at(interval, hours)
+    with pytest.raises(CandleSequenceValidationError) as captured:
+        validate_candle_sequence(candles)
+
+    error = captured.value
+    assert error.reason == "gap"
+    assert error.exchange == EXCHANGE
+    assert error.symbol == "BTCUSDT"
+    assert error.interval == interval
+    assert error.previous_timestamp == candles[0].open_time
+    assert error.next_timestamp == candles[1].open_time
+    assert error.missing_intervals == missing
+    duration = timedelta(hours=int(interval[:-1]))
+    assert error.expected_timestamps == tuple(
+        candles[0].open_time + duration * index for index in range(1, missing + 1)
+    )
+
+
+@pytest.mark.parametrize(
+    ("hours", "reason"),
+    [
+        pytest.param((1, 0), "out_of_order", id="unsorted"),
+        pytest.param((0, 0), "duplicate", id="duplicate"),
+    ],
+)
+def test_sequence_validator_rejects_non_strict_order(
+    hours: tuple[int, int], reason: str
+) -> None:
+    with pytest.raises(CandleSequenceValidationError) as captured:
+        validate_candle_sequence(candles_at("1h", hours))
+    assert captured.value.reason == reason
+
+
+@pytest.mark.parametrize(
+    ("interval", "offset"),
+    [
+        pytest.param("1h", timedelta(minutes=1), id="misaligned-hour"),
+        pytest.param("4h", timedelta(hours=1), id="misaligned-four-hour"),
+    ],
+)
+def test_sequence_validator_rejects_misaligned_utc_timestamps(
+    interval: str, offset: timedelta
+) -> None:
+    candle = candles_at(interval, (0,))[0]
+    misaligned = candle.model_copy(update={"open_time": candle.open_time + offset})
+    with pytest.raises(CandleSequenceValidationError) as captured:
+        validate_candle_sequence([misaligned])
+    assert captured.value.reason == "misaligned"
+    assert captured.value.expected_timestamps == (candle.open_time,)

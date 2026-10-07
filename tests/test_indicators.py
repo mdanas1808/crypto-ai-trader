@@ -8,6 +8,7 @@ import pytest
 
 from app.indicators.technical import INDICATOR_COLUMNS, calculate_indicators
 from app.market.models import Candle
+from app.market.validation import CandleSequenceValidationError
 
 
 def make_candles(
@@ -271,8 +272,23 @@ def test_insufficient_history_produces_missing_values_without_filling() -> None:
 def test_rejects_non_chronological_input() -> None:
     candles = make_candles([100, 101, 102])
 
-    with pytest.raises(ValueError, match="strictly chronological"):
+    with pytest.raises(CandleSequenceValidationError, match="out of order"):
         calculate_indicators([candles[1], candles[0], candles[2]])
+
+
+def test_indicator_calculation_rejects_gapped_candles() -> None:
+    candles = make_candles([100, 101, 102])
+    candles[2] = candles[2].model_copy(
+        update={"open_time": candles[2].open_time + timedelta(hours=1)}
+    )
+
+    with pytest.raises(CandleSequenceValidationError) as captured:
+        calculate_indicators(candles)
+
+    assert captured.value.reason == "gap"
+    assert captured.value.missing_intervals == 1
+    assert captured.value.previous_timestamp == candles[1].open_time
+    assert captured.value.next_timestamp == candles[2].open_time
 
 
 def test_appending_future_candles_does_not_change_past_indicators() -> None:
