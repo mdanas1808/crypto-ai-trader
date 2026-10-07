@@ -127,3 +127,60 @@ def test_sequence_validator_rejects_misaligned_utc_timestamps(
         validate_candle_sequence([misaligned])
     assert captured.value.reason == "misaligned"
     assert captured.value.expected_timestamps == (candle.open_time,)
+
+
+def valid_open_observation_values() -> dict[str, object]:
+    return {
+        "exchange": EXCHANGE,
+        "symbol": "BTCUSDT",
+        "interval": "1h",
+        "open_time": datetime(2024, 1, 1, tzinfo=timezone.utc),
+        "observed_at": datetime(2024, 1, 1, 0, 0, 1, tzinfo=timezone.utc),
+        "open": "42000.12345678",
+    }
+
+
+def test_candle_open_observation_is_immutable_decimal_and_utc_normalized() -> None:
+    from datetime import timedelta
+
+    from app.market.models import CandleOpenObservation
+
+    values = valid_open_observation_values()
+    values["open_time"] = datetime(2024, 1, 1, 5, tzinfo=timezone(timedelta(hours=5)))
+    values["observed_at"] = datetime(2024, 1, 1, 5, 0, 1, tzinfo=timezone(timedelta(hours=5)))
+    observation = CandleOpenObservation.model_validate(values)
+
+    assert observation.open_time == datetime(2024, 1, 1, tzinfo=timezone.utc)
+    assert observation.observed_at == datetime(2024, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
+    assert observation.open == Decimal("42000.12345678")
+    with pytest.raises(ValidationError):
+        observation.open = Decimal("1")
+
+
+def test_candle_open_observation_rejects_unsupported_identity_and_naive_times() -> None:
+    from app.market.models import CandleOpenObservation
+
+    for field, value, message in (
+        ("symbol", "BNBUSDT", "unsupported symbol"),
+        ("interval", "15m", "unsupported interval"),
+        ("open_time", datetime(2024, 1, 1), "timezone"),
+        ("observed_at", datetime(2024, 1, 1), "timezone"),
+    ):
+        with pytest.raises(ValidationError, match=message):
+            CandleOpenObservation.model_validate({**valid_open_observation_values(), field: value})
+
+
+def test_candle_open_observation_rejects_binary_float() -> None:
+    from app.market.models import CandleOpenObservation
+
+    with pytest.raises(ValidationError, match="decimal string or Decimal"):
+        CandleOpenObservation.model_validate({**valid_open_observation_values(), "open": 42000.5})
+
+
+def test_candle_open_observation_rejects_forming_ohlcv_extras() -> None:
+    from app.market.models import CandleOpenObservation
+
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        CandleOpenObservation.model_validate(
+            {**valid_open_observation_values(), "close": "42001"}
+        )

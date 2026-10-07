@@ -235,3 +235,71 @@ def test_stream_never_yields_forming_candles(monkeypatch):
     assert fake.sent == [stream.subscription_message]
     assert len(candles) == 1
     assert candles[0].open_time == datetime(2024, 1, 1, tzinfo=timezone.utc)
+
+
+def event_payload(*, closed=False, event_time=OPEN_MS + 1000, **updates):
+    event = json.loads(payload(closed=closed, **updates))
+    event["E"] = event_time
+    return json.dumps(event)
+
+
+def test_forming_update_parses_minimal_open_observation_and_ignores_later_ohlcv():
+    from app.market.models import CandleOpenObservation
+    from app.market.websocket import parse_candle_open_observation
+
+    observation = parse_candle_open_observation(
+        event_payload(closed=False, h="not-an-open-field", l=None, c={}, v=object().__str__())
+    )
+
+    assert isinstance(observation, CandleOpenObservation)
+    assert observation.exchange == "binance_spot"
+    assert observation.symbol == "BTCUSDT"
+    assert observation.interval == "1h"
+    assert observation.open_time == datetime(2024, 1, 1, tzinfo=timezone.utc)
+    assert observation.observed_at == datetime(2024, 1, 1, 0, 0, 1, tzinfo=timezone.utc)
+    assert observation.open == Decimal("42000.12345678")
+    assert not hasattr(observation, "high")
+    assert not hasattr(observation, "close")
+    assert not hasattr(observation, "volume")
+
+
+def test_open_observation_parser_ignores_ack_and_completed_kline():
+    from app.market.websocket import parse_candle_open_observation
+
+    assert parse_candle_open_observation('{"result":null,"id":1}') is None
+    assert parse_candle_open_observation(event_payload(closed=True)) is None
+
+
+def test_event_stream_emits_only_first_open_update_and_keeps_closed_candle(monkeypatch):
+    from app.market.models import CandleOpenObservation
+
+    fake = FakeWebSocket(
+        [
+            '{"result":null,"id":1}',
+            event_payload(closed=False, event_time=OPEN_MS + 1000),
+            event_payload(closed=False, event_time=OPEN_MS + 2000, o="999", h="invalid"),
+            event_payload(closed=True),
+        ]
+    )
+    monkeypatch.setattr("app.market.websocket.websockets.connect", lambda _url: fake)
+    stream = BinanceSpotKlineStream(symbols=("BTCUSDT",))
+
+    async def collect():
+        return [event async for event in stream.events()]
+
+    events = asyncio.run(collect())
+    assert fake.sent == [stream.subscription_message]
+    assert len(events) == 2
+    assert isinstance(events[0], CandleOpenObservation)
+    assert events[0].open == Decimal("42000.12345678")
+    assert isinstance(events[1], Candle)
+    assert events[1].close == Decimal("42050.12345678")
+
+
+def test_forming_open_observation_requires_binance_event_time():
+    from app.market.websocket import parse_candle_open_observation
+
+    data = json.loads(event_payload(closed=False))
+    del data["E"]
+    with pytest.raises(WebSocketMessageError, match="event time"):
+        parse_candle_open_observation(json.dumps(data))

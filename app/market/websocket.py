@@ -10,7 +10,7 @@ import websockets
 from pydantic import ValidationError
 
 from app.market.constants import SUPPORTED_INTERVALS, SUPPORTED_SYMBOLS
-from app.market.models import Candle
+from app.market.models import Candle, CandleOpenObservation
 
 BINANCE_SPOT_WEBSOCKET_URL = "wss://stream.binance.com:9443/ws"
 UTC_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -129,6 +129,63 @@ def parse_kline_message(payload: str | bytes) -> tuple[Candle, bool] | None:
     return candle, closed
 
 
+def parse_candle_open_observation(payload: str | bytes) -> CandleOpenObservation | None:
+    """Parse only the first-update fields needed for a forming candle's open.
+
+    A closed kline and a subscription acknowledgement return ``None``. The
+    parser deliberately does not read forming high, low, close, or volume.
+    """
+    message = _decode_payload(payload)
+    if "result" in message and "id" in message and "data" not in message:
+        if message["result"] is not None or isinstance(message["id"], bool) or not isinstance(message["id"], int):
+            raise WebSocketMessageError("invalid subscription acknowledgement")
+        return None
+
+    stream_name = message.get("stream")
+    event = message.get("data", message)
+    if not isinstance(event, dict):
+        raise WebSocketMessageError("kline event data must be a JSON object")
+    if event.get("e") != "kline":
+        raise WebSocketMessageError("expected a Binance kline event")
+    kline = event.get("k")
+    if not isinstance(kline, dict):
+        raise WebSocketMessageError("kline event must contain a kline object")
+
+    closed = kline.get("x")
+    if not isinstance(closed, bool):
+        raise WebSocketMessageError("kline closed flag must be a boolean")
+    if closed:
+        return None
+
+    symbol = kline.get("s")
+    interval = kline.get("i")
+    if not isinstance(symbol, str) or symbol not in SUPPORTED_SYMBOLS:
+        raise WebSocketMessageError(f"unsupported symbol: {symbol!r}")
+    if not isinstance(interval, str) or interval not in SUPPORTED_INTERVALS:
+        raise WebSocketMessageError(f"unsupported interval: {interval!r}")
+    outer_symbols = (message.get("s"), event.get("s"))
+    if any(outer_symbol is not None and outer_symbol != symbol for outer_symbol in outer_symbols):
+        raise WebSocketMessageError("outer and inner symbols do not match")
+    if stream_name is not None and stream_name != f"{symbol.lower()}@kline_{interval}":
+        raise WebSocketMessageError("stream name does not match kline symbol and interval")
+
+    event_time = event.get("E")
+    if event_time is None:
+        raise WebSocketMessageError("kline event must contain event time")
+    try:
+        observation = CandleOpenObservation(
+            exchange="binance_spot",
+            symbol=symbol,
+            interval=interval,
+            open_time=_timestamp_ms(kline.get("t"), "open time"),
+            observed_at=_timestamp_ms(event_time, "event time"),
+            open=_decimal_string(kline.get("o"), "open"),
+        )
+    except (ValidationError, ValueError) as exc:
+        raise WebSocketMessageError(f"invalid candle open observation: {exc}") from exc
+    return observation
+
+
 class BinanceSpotKlineStream:
     """Subscribe to configured Binance Spot kline streams and yield closed candles."""
 
@@ -165,6 +222,40 @@ class BinanceSpotKlineStream:
             {"method": "SUBSCRIBE", "params": list(self.stream_names), "id": 1},
             separators=(",", ":"),
         )
+
+    async def events(self) -> AsyncIterator[Candle | CandleOpenObservation]:
+        """Yield first-seen open observations and completed candles.
+
+        Forming updates are reduced to a CandleOpenObservation before they
+        leave the adapter. Later updates for that same candle are suppressed.
+        """
+        last_open_times: dict[tuple[str, str, str], datetime] = {}
+        async with websockets.connect(self.url) as websocket:
+            await websocket.send(self.subscription_message)
+            async for payload in websocket:
+                observation = parse_candle_open_observation(payload)
+                if observation is not None:
+                    if observation.symbol not in self.symbols or observation.interval != self.interval:
+                        raise WebSocketMessageError(
+                            "received an observation outside the configured symbol/interval streams"
+                        )
+                    identity = (observation.exchange, observation.symbol, observation.interval)
+                    previous_open = last_open_times.get(identity)
+                    if previous_open is None or observation.open_time > previous_open:
+                        last_open_times[identity] = observation.open_time
+                        yield observation
+                    continue
+
+                parsed = parse_kline_message(payload)
+                if parsed is None:
+                    continue
+                candle, closed = parsed
+                if candle.symbol not in self.symbols or candle.interval != self.interval:
+                    raise WebSocketMessageError(
+                        "received a candle outside the configured symbol/interval streams"
+                    )
+                if closed:
+                    yield candle
 
     async def candles(self) -> AsyncIterator[Candle]:
         """Connect once, subscribe, and yield only exchange-closed candles.

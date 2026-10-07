@@ -71,6 +71,7 @@ class Portfolio:
         timestamp: datetime,
         next_open: Decimal,
         marks: dict[str, Decimal],
+        observed_at: datetime | None = None,
     ) -> Position | None:
         if signal.side != "long":
             return None
@@ -114,6 +115,7 @@ class Portfolio:
             quantity=quantity,
             fee=fee,
             reason="entry",
+            observed_at=observed_at,
         )
         position = Position(
             signal=signal,

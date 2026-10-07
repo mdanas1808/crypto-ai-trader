@@ -34,6 +34,7 @@ class Fill:
     quantity: Decimal
     fee: Decimal
     reason: str
+    observed_at: datetime | None = None
 
     @property
     def notional(self) -> Decimal:
