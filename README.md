@@ -26,6 +26,8 @@ The read-only endpoint queries PostgreSQL only and never calls the exchange:
 GET /market/candles?symbol=BTCUSDT&interval=1h&limit=10
 ```
 
+Offline backtest preparation can retrieve one symbol and interval using optional inclusive UTC start and end timestamps, then calculate indicators in memory. Gaps still raise the existing candle-sequence validation error. The walk-forward iterator exposes a copied chronological prefix at each step, so a strategy can only see candles available through that step. This preparation layer does not submit orders or simulate fills.
+
 ## Local development
 
 Python 3.13 is used on the development VM.
