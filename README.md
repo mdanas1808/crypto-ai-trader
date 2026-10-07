@@ -28,6 +28,8 @@ GET /market/candles?symbol=BTCUSDT&interval=1h&limit=10
 
 Offline backtest preparation can retrieve one symbol and interval using optional inclusive UTC start and end timestamps, then calculate indicators in memory. Gaps still raise the existing candle-sequence validation error. The walk-forward iterator exposes a copied chronological prefix at each step, so a strategy can only see candles available through that step. This preparation layer does not submit orders or simulate fills.
 
+Multi-timeframe backtest preparation can combine 1H decision rows with the latest completed 4H candle. Candle completion is defined as `open_time + interval duration`; a 4H candle is eligible only when its completion time is at or before the 1H decision time (`1H open_time + 1 hour`). The aligned frame uses the UTC decision time as its index and prefixes 4H fields with `4h_`. It never fills from a future candle. The requested range is inclusive on candle open times; an optional explicit warm-up start loads earlier history, while returned 1H decision rows still begin at the requested start. EMA 200 needs 200 observations for its first value, so callers must provide enough prior data when they need warm indicators at the requested start. No automatic warm-up range is inferred.
+
 ## Local development
 
 Python 3.13 is used on the development VM.
