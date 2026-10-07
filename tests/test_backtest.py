@@ -7,6 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.backtest.data import (
+    BREAKOUT_CONTEXT_CANDLES,
+    MultiTimeframeBacktestData,
     align_timeframes,
     candle_completion_times,
     prepare_backtest_data,
@@ -286,9 +288,85 @@ def test_prepare_multitimeframe_data_uses_validated_repository_series(
         end_time=start + timedelta(hours=4),
     )
 
-    assert len(result) == 5
-    assert result.index[0] == start + timedelta(hours=1)
-    assert result.index[-1] == start + timedelta(hours=5)
-    assert pd.isna(result.iloc[0]["4h_ema_20"])
-    assert result.iloc[3]["4h_open_time"] == start
-    assert all(isinstance(value, Decimal) for value in result["close"])
+    assert isinstance(result, MultiTimeframeBacktestData)
+    assert len(result.trading_frame) == 5
+    assert result.trading_frame.index[0] == start + timedelta(hours=1)
+    assert result.trading_frame.index[-1] == start + timedelta(hours=5)
+    assert pd.isna(result.trading_frame.iloc[0]["4h_ema_20"])
+    assert result.trading_frame.iloc[3]["4h_open_time"] == start
+    assert all(isinstance(value, Decimal) for value in result.trading_frame["close"])
+
+
+def test_multitimeframe_preparation_separates_context_and_trading_rows(monkeypatch) -> None:
+    start = datetime(2024, 1, 2, tzinfo=timezone.utc)
+    end = start + timedelta(hours=2)
+    hourly = []
+    for offset in range(-BREAKOUT_CONTEXT_CANDLES, 3):
+        close = Decimal(100 + offset)
+        high = Decimal("999") if offset == 0 else close + Decimal("2")
+        hourly.append(
+            Candle(
+                exchange="binance_spot",
+                symbol="BTCUSDT",
+                interval="1h",
+                open_time=start + timedelta(hours=offset),
+                open=close,
+                high=high,
+                low=close - Decimal("2"),
+                close=close,
+                volume=Decimal("1"),
+            )
+        )
+    four_hour = []
+    for offset in (-8, -4, 0):
+        close = Decimal(200 + offset)
+        four_hour.append(
+            Candle(
+                exchange="binance_spot",
+                symbol="BTCUSDT",
+                interval="4h",
+                open_time=start + timedelta(hours=offset),
+                open=close,
+                high=close + Decimal("2"),
+                low=close - Decimal("2"),
+                close=close,
+                volume=Decimal("1"),
+            )
+        )
+
+    def retrieve(_session, _symbol, interval, start_time, end_time, _exchange):
+        source = hourly if interval == "1h" else four_hour
+        return [
+            candle
+            for candle in source
+            if start_time <= candle.open_time <= end_time
+        ]
+
+    monkeypatch.setattr("app.backtest.data.get_candles_in_range", retrieve)
+
+    result = prepare_multi_timeframe_backtest_data(
+        session=None,
+        symbol="BTCUSDT",
+        start_time=start,
+        end_time=end,
+    )
+
+    assert isinstance(result, MultiTimeframeBacktestData)
+    assert len(result.context_frame) == BREAKOUT_CONTEXT_CANDLES
+    first_trading = result.trading_frame.iloc[0]
+    previous_20 = result.context_frame.tail(BREAKOUT_CONTEXT_CANDLES)
+    assert first_trading["open_time"] == start
+    assert previous_20["open_time"].max() < first_trading["open_time"]
+    assert len(previous_20) == BREAKOUT_CONTEXT_CANDLES
+    assert first_trading["high"] not in previous_20["high"].tolist()
+
+    assert (result.context_frame["open_time"] < start).all()
+    assert (result.trading_frame["open_time"] >= start).all()
+    assert (result.trading_frame["open_time"] <= end).all()
+    assert result.context_frame.index.intersection(result.trading_frame.index).empty
+    assert result.trading_frame["open_time"].tolist()[-1] == end
+
+    # The first trading row at 00:00 decides at 01:00; the 20:00 prior 4H
+    # candle completed at 00:00 and remains the selected causal regime row.
+    assert result.trading_frame.iloc[0]["4h_open_time"] == start - timedelta(hours=4)
+    assert result.trading_frame.iloc[0]["4h_completion_time"] == start

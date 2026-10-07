@@ -1,6 +1,7 @@
 """Prepare historical candles and indicators for offline backtests."""
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 import pandas as pd
@@ -12,8 +13,17 @@ from app.market.repository import get_candles_in_range
 from app.market.validation import interval_duration
 
 MINIMUM_INDICATOR_HISTORY_CANDLES = 200
+BREAKOUT_CONTEXT_CANDLES = 20
 EXECUTION_INTERVAL = "1h"
 REGIME_INTERVAL = "4h"
+
+
+@dataclass(frozen=True)
+class MultiTimeframeBacktestData:
+    """Keep pre-start context separate from rows eligible for trading."""
+
+    context_frame: pd.DataFrame
+    trading_frame: pd.DataFrame
 
 
 def candle_completion_times(
@@ -95,26 +105,31 @@ def prepare_multi_timeframe_backtest_data(
     *,
     warmup_start_time: datetime | None = None,
     exchange: str = EXCHANGE,
-) -> pd.DataFrame:
-    """Prepare requested 1H decisions and causally aligned 4H indicators.
+) -> MultiTimeframeBacktestData:
+    """Prepare context and trading frames with causally aligned 4H indicators.
 
-    Range bounds apply inclusively to candle ``open_time``. An optional
-    ``warmup_start_time`` loads earlier data for indicator initialization, but
-    returned decision rows still begin at ``start_time``. No warm-up is
-    inferred or loaded automatically. EMA 200 first becomes available after
-    200 observations (199 earlier candles plus the current candle).
+    Range bounds apply inclusively to candle ``open_time``. ``context_frame``
+    contains only rows before ``start_time``; ``trading_frame`` contains only
+    rows from ``start_time`` through ``end_time``. At least the preceding 20H
+    query window is loaded for breakout history. An earlier explicit
+    ``warmup_start_time`` may load more indicator history. Context rows never
+    appear in ``trading_frame``. EMA 200 first becomes available after 200
+    observations (199 earlier candles plus the current candle); no additional
+    indicator warm-up is inferred automatically.
     """
     start_time = _as_utc_bound(start_time, "start_time")
     end_time = _as_utc_bound(end_time, "end_time")
     if start_time > end_time:
         raise ValueError("start_time must be less than or equal to end_time")
-    query_start = (
-        _as_utc_bound(warmup_start_time, "warmup_start_time")
-        if warmup_start_time is not None
-        else start_time
+    required_context_start = start_time - BREAKOUT_CONTEXT_CANDLES * interval_duration(
+        EXECUTION_INTERVAL
     )
-    if query_start > start_time:
-        raise ValueError("warmup_start_time must be less than or equal to start_time")
+    query_start = required_context_start
+    if warmup_start_time is not None:
+        warmup_start_time = _as_utc_bound(warmup_start_time, "warmup_start_time")
+        if warmup_start_time > start_time:
+            raise ValueError("warmup_start_time must be less than or equal to start_time")
+        query_start = min(query_start, warmup_start_time)
 
     hourly_candles = get_candles_in_range(
         session, symbol, EXECUTION_INTERVAL, query_start, end_time, exchange
@@ -129,8 +144,12 @@ def prepare_multi_timeframe_backtest_data(
     four_hour = calculate_indicators(four_hour_candles)
     aligned = align_timeframes(hourly, four_hour)
 
-    requested_rows = aligned["open_time"].ge(start_time) & aligned["open_time"].le(end_time)
-    return aligned.loc[requested_rows].copy(deep=True)
+    context_rows = aligned["open_time"].lt(start_time)
+    trading_rows = aligned["open_time"].ge(start_time) & aligned["open_time"].le(end_time)
+    return MultiTimeframeBacktestData(
+        context_frame=aligned.loc[context_rows].copy(deep=True),
+        trading_frame=aligned.loc[trading_rows].copy(deep=True),
+    )
 
 
 def _validate_indicator_frame(
