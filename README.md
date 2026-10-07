@@ -34,6 +34,8 @@ Multi-timeframe backtest preparation returns separate `context_frame` and `tradi
 
 `app/backtest/engine.py` provides a deterministic multi-symbol portfolio runner. It consumes prepared per-symbol multi-timeframe streams and existing breakout signals; it does not call an exchange or persist orders, positions, or indicators. Entries use the next in-range 1H open, Decimal price/fee arithmetic, adverse slippage, fixed ATR stops and 2R targets, and stop-first same-candle handling. A shared spot portfolio applies quantity rounding, cash, open-risk, position-count, and UTC daily-loss limits. Remaining positions are force-closed at the final available in-range close. Configure `BacktestConfig.minimum_quantity` explicitly; no exchange quantity filters are inferred. The engine is a simulation layer and does not submit live or paper orders.
 
+Each `BacktestResult` includes a Decimal equity curve with an initial starting-cash checkpoint and one valuation at each completed global decision time. The start point uses no prices from the first candle; decision points reflect the portfolio after the corresponding completed-bar processing. Trade and fill records remain the authoritative execution-event history. `app/backtest/analysis.py` calculates deterministic offline trade metrics and maximum drawdown from this equity curve, including unrealized equity changes. No live or paper order execution is performed.
+
 ## Local development
 
 Python 3.13 is used on the development VM.

@@ -74,11 +74,21 @@ class Trade:
 
 
 @dataclass(frozen=True)
+class EquityPoint:
+    """Portfolio valuation at the initial baseline or a completed decision."""
+
+    timestamp: datetime
+    equity: Decimal
+    event: Literal["start", "decision"]
+
+
+@dataclass(frozen=True)
 class BacktestResult:
     trades: tuple[Trade, ...]
     final_cash: Decimal
     final_equity: Decimal
     final_open_positions: tuple[Position, ...]
+    equity_curve: tuple[EquityPoint, ...] = ()
 
     @property
     def realized_net_pnl(self) -> Decimal:

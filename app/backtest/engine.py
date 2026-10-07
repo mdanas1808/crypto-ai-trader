@@ -7,7 +7,7 @@ from decimal import Decimal
 import pandas as pd
 
 from app.backtest.data import MultiTimeframeBacktestData
-from app.backtest.models import BacktestConfig, BacktestResult, Position
+from app.backtest.models import BacktestConfig, BacktestResult, EquityPoint, Position
 from app.backtest.portfolio import Portfolio
 from app.market.constants import EXCHANGE
 from app.strategy.breakout import BreakoutSignal, generate_breakout_signals
@@ -108,9 +108,19 @@ def run_backtest(
 
     timeline = sorted(rows_by_time)
     if not timeline:
-        return BacktestResult((), portfolio.cash, portfolio.cash, ())
+        return BacktestResult((), portfolio.cash, portfolio.cash, (), ())
 
     last_marks: dict[str, Decimal] = {}
+    first_open_time = min(
+        open_time for symbol_rows in rows_by_open.values() for open_time in symbol_rows
+    )
+    equity_curve = [
+        EquityPoint(
+            timestamp=first_open_time,
+            equity=config.starting_cash,
+            event="start",
+        )
+    ]
     for timestamp in timeline:
         current_rows = rows_by_time[timestamp]
         # All exits at this decision boundary are settled before any new signal.
@@ -128,6 +138,17 @@ def run_backtest(
         # Establish a new UTC day's baseline after prior-bar exits but before
         # any opening-gap movement at this timestamp is applied.
         portfolio.begin_day(timestamp, last_marks)
+
+        # This checkpoint values the completed candle state. Opening-gap
+        # resolution and next-candle entries below belong to the next candle;
+        # their resulting state is observed at its completed decision point.
+        equity_curve.append(
+            EquityPoint(
+                timestamp=timestamp,
+                equity=portfolio.equity(last_marks),
+                event="decision",
+            )
+        )
 
         # Opening gaps occur at the beginning of the next candle, which shares
         # the just-completed candle's decision timestamp. Resolve these before
@@ -184,11 +205,17 @@ def run_backtest(
         )
 
     final_equity = portfolio.equity(last_marks)
+    equity_curve[-1] = EquityPoint(
+        timestamp=equity_curve[-1].timestamp,
+        equity=final_equity,
+        event="decision",
+    )
     return BacktestResult(
         trades=tuple(portfolio.trades),
         final_cash=portfolio.cash,
         final_equity=final_equity,
         final_open_positions=tuple(portfolio.positions.values()),
+        equity_curve=tuple(equity_curve),
     )
 
 

@@ -232,3 +232,85 @@ def test_multiple_symbols_are_processed_chronologically():
     ]
     assert result.trades[0].exit_reason == "stop_loss"
     assert result.trades[1].exit_reason == "take_profit"
+
+
+def test_equity_curve_starts_before_first_candle_prices_are_known():
+    stream = make_stream(
+        count=2,
+        highs=[Decimal("10000"), Decimal("102")],
+        lows=[Decimal("1"), Decimal("99")],
+        closes=[Decimal("5000"), Decimal("101")],
+    )
+    result = run({"BTCUSDT": stream}, end=START + timedelta(hours=1))
+
+    assert result.equity_curve[0].timestamp == START
+    assert result.equity_curve[0].event == "start"
+    assert result.equity_curve[0].equity == Decimal("100")
+
+
+def test_equity_curve_has_one_ordered_decision_per_global_timeline_time():
+    result = run(
+        {"BTCUSDT": make_stream("BTCUSDT", count=3), "ETHUSDT": make_stream("ETHUSDT", count=3)},
+        end=START + timedelta(hours=2),
+    )
+    points = result.equity_curve
+
+    assert [point.timestamp for point in points] == [
+        START,
+        START + timedelta(hours=1),
+        START + timedelta(hours=2),
+        START + timedelta(hours=3),
+    ]
+    assert [point.event for point in points] == ["start", "decision", "decision", "decision"]
+    assert all(point.timestamp.tzinfo is UTC for point in points)
+    assert points[-1].equity == result.final_equity
+
+
+def test_final_decision_point_reflects_forced_close_state():
+    result = run({"BTCUSDT": make_stream(count=2)}, end=START + timedelta(hours=1))
+    assert result.trades[-1].exit_reason == "end_of_backtest"
+    assert result.equity_curve[-1].timestamp == START + timedelta(hours=2)
+    assert result.equity_curve[-1].event == "decision"
+    assert result.equity_curve[-1].equity == result.final_equity == result.final_cash
+
+
+def test_opening_gap_fill_time_precedes_completed_equity_observation():
+    stream = make_stream(
+        count=3,
+        opens=[Decimal("100"), Decimal("100"), Decimal("90")],
+        highs=[Decimal("102"), Decimal("104"), Decimal("95")],
+        lows=[Decimal("99"), Decimal("97"), Decimal("89")],
+        closes=[Decimal("101"), Decimal("103"), Decimal("94")],
+    )
+    result = run({"BTCUSDT": stream}, end=START + timedelta(hours=2))
+    gap_exit = result.trades[0].exit_fill
+
+    assert gap_exit.timestamp == START + timedelta(hours=2)
+    # The gap handling is an execution event at the open. The point at that
+    # boundary remains the preceding completed-candle valuation; the state
+    # after resolving the bar is observed at the next completed decision.
+    point_at_open = next(point for point in result.equity_curve if point.timestamp == gap_exit.timestamp)
+    completed_observation = next(
+        point for point in result.equity_curve if point.timestamp == START + timedelta(hours=3)
+    )
+    assert point_at_open.equity != result.final_equity
+    assert completed_observation.equity == result.final_equity
+
+
+def test_equity_curve_uses_union_of_multi_symbol_decision_times():
+    early = make_stream("BTCUSDT", count=2)
+    late = make_stream("ETHUSDT", count=2)
+    late.trading_frame.index = late.trading_frame.index + pd.Timedelta(hours=2)
+    late.trading_frame["open_time"] = late.trading_frame["open_time"].map(
+        lambda value: value + timedelta(hours=2)
+    )
+    late.context_frame.index = late.context_frame.index + pd.Timedelta(hours=2)
+    late.context_frame["open_time"] = late.context_frame["open_time"].map(
+        lambda value: value + timedelta(hours=2)
+    )
+    result = run({"BTCUSDT": early, "ETHUSDT": late}, end=START + timedelta(hours=3))
+
+    assert [point.timestamp for point in result.equity_curve] == [
+        START, START + timedelta(hours=1), START + timedelta(hours=2),
+        START + timedelta(hours=3), START + timedelta(hours=4),
+    ]
