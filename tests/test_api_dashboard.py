@@ -301,3 +301,62 @@ def test_dashboard_callable_session_provider():
     current_target = None
     assert client.get("/portfolio").status_code == 503
 
+
+def test_dashboard_ui_serves_html():
+    app = create_dashboard_app(None)
+    client = TestClient(app)
+
+    # Root route /
+    res_root = client.get("/")
+    assert res_root.status_code == 200
+    assert "text/html" in res_root.headers["content-type"]
+    assert "Crypto AI Trader" in res_root.text
+    assert "tailwindcss" in res_root.text
+    assert "Active Positions" in res_root.text
+    assert "Pending Breakout Signals" in res_root.text
+    assert "Trade History &amp; AI Explanations" in res_root.text or "Trade History & AI Explanations" in res_root.text
+
+    # Dedicated route /ui
+    res_ui = client.get("/ui")
+    assert res_ui.status_code == 200
+    assert "text/html" in res_ui.headers["content-type"]
+    assert "Crypto AI Trader" in res_ui.text
+
+
+def test_dashboard_serializes_explanations():
+    executor = PaperExecutor(make_config())
+    app = create_dashboard_app(executor)
+    client = TestClient(app)
+
+    # Signal with explanation
+    c1 = make_candle(opened=START)
+    executor.on_candle_closed(c1)
+    sig = make_signal(opened=START)
+    object.__setattr__(sig, "explanation", "Breakout Long Signal commentary text")
+    assert executor.submit_signal(sig)
+
+    signals_resp = client.get("/signals")
+    assert signals_resp.status_code == 200
+    signals_data = signals_resp.json()
+    assert len(signals_data) == 1
+    assert signals_data[0]["explanation"] == "Breakout Long Signal commentary text"
+
+    # Trade with explanation
+    obs = make_observation(opened=START + timedelta(hours=1), price=D("10"))
+    executor.on_open_observation(obs)
+    c_exit = make_candle(
+        opened=START + timedelta(hours=1),
+        open=D("10"),
+        high=D("25"),
+        low=D("9.5"),
+        close=D("20"),
+    )
+    trade = executor.on_candle_closed(c_exit)
+    assert trade is not None
+    object.__setattr__(trade, "explanation", "Analytical trade exit retrospective text")
+
+    trades_resp = client.get("/trades")
+    assert trades_resp.status_code == 200
+    trades_data = trades_resp.json()
+    assert len(trades_data) == 1
+    assert trades_data[0]["explanation"] == "Analytical trade exit retrospective text"

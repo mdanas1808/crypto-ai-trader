@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crypto AI Trader - Live Paper Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#eef2ff',
+                            500: '#6366f1',
+                            600: '#4f46e5',
+                            700: '#4338ca',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom scrollbar for trade & explanation lists */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #0f172a;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #334155;
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased">
+    <!-- Navigation / Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center gap-3">
+                <div class="w-9 h-9 rounded-lg bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+                    <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                    </svg>
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                        Crypto AI Trader
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">PAPER LIVE</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Binance Spot Deterministic Strategy &amp; AI Explainer</p>
+                </div>
+            </div>
+
+            <!-- Status Indicator & Controls -->
+            <div class="flex items-center gap-3 text-xs">
+                <div id="connection-status" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span id="status-text" class="text-slate-300 font-medium">Live (10s)</span>
+                </div>
+                <div class="text-slate-400 hidden sm:block">
+                    Updated: <span id="last-updated" class="text-slate-200">--:--:--</span>
+                </div>
+                <button id="refresh-btn" onclick="refreshDashboard()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-medium transition flex items-center gap-1.5">
+                    <svg id="refresh-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    <span>Refresh</span>
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- SECTION 1: Portfolio Metrics -->
+        <section aria-labelledby="portfolio-heading">
+            <h2 id="portfolio-heading" class="sr-only">Portfolio Metrics</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Total Equity -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider">Total Equity</span>
+                        <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                        </svg>
+                    </div>
+                    <div class="text-2xl font-bold tracking-tight text-white flex items-baseline gap-1">
+                        <span id="metric-equity">--</span>
+                        <span class="text-xs text-slate-400 font-normal">USDT</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Cash + unrealized open positions</p>
+                </div>
+
+                <!-- Available Cash -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider">Available Cash</span>
+                        <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                    </div>
+                    <div class="text-2xl font-bold tracking-tight text-white flex items-baseline gap-1">
+                        <span id="metric-cash">--</span>
+                        <span class="text-xs text-slate-400 font-normal">USDT</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Settled buying power</p>
+                </div>
+
+                <!-- Open Risk -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider">Open Risk</span>
+                        <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                    </div>
+                    <div class="text-2xl font-bold tracking-tight text-white flex items-baseline gap-1">
+                        <span id="metric-risk">--</span>
+                        <span class="text-xs text-slate-400 font-normal">USDT</span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-1">Capital at risk to stop loss</p>
+                </div>
+
+                <!-- Daily Loss Status -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
+                    <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <span class="text-xs font-semibold uppercase tracking-wider">Daily Loss Limit</span>
+                        <svg class="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                    </div>
+                    <div class="text-xl font-bold tracking-tight mt-1">
+                        <span id="metric-daily-loss" class="px-2.5 py-1 rounded-md text-xs font-semibold bg-slate-800 text-slate-300">
+                            Checking...
+                        </span>
+                    </div>
+                    <p class="text-xs text-slate-500 mt-2">Protective circuit breaker</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 2 & 3: Active Positions & Pending Signals -->
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+            <!-- SECTION 2: Active Positions -->
+            <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
+                <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                        <h2 class="font-semibold text-sm text-white">Active Positions</h2>
+                    </div>
+                    <span id="positions-count" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">0</span>
+                </div>
+                <div class="p-4 flex-1 overflow-x-auto">
+                    <div id="positions-container">
+                        <div class="py-8 text-center text-slate-500 text-sm">Loading positions...</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION 3: Pending Signals -->
+            <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
+                <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+                    <div class="flex items-center gap-2">
+                        <span class="w-2.5 h-2.5 rounded-full bg-indigo-400"></span>
+                        <h2 class="font-semibold text-sm text-white">Pending Breakout Signals</h2>
+                    </div>
+                    <span id="signals-count" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">0</span>
+                </div>
+                <div class="p-4 flex-1 overflow-x-auto">
+                    <div id="signals-container">
+                        <div class="py-8 text-center text-slate-500 text-sm">Loading pending signals...</div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <!-- SECTION 4: Trade History & AI Explanations -->
+        <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
+            <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
+                    <h2 class="font-semibold text-sm text-white">Trade History &amp; AI Explanations</h2>
+                </div>
+                <span id="trades-count" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">0</span>
+            </div>
+            <div class="p-4">
+                <div id="trades-container">
+                    <div class="py-8 text-center text-slate-500 text-sm">Loading trade history...</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800/80 py-4 text-center text-xs text-slate-500">
+        Crypto AI Trader &bull; Binance Spot Deterministic Paper Trading &bull; Read-Only Dashboard
+    </footer>
+
+    <!-- JavaScript Application -->
+    <script>
+        // Formatting Utilities
+        function formatNumber(val, decimals = 4) {
+            if (val === null || val === undefined) return '--';
+            const num = parseFloat(val);
+            if (isNaN(num)) return val;
+            return num.toLocaleString('en-US', {
+                minimumFractionDigits: decimals,
+                maximumFractionDigits: decimals
+            });
+        }
+
+        function formatDateTime(isoStr) {
+            if (!isoStr) return '--';
+            try {
+                const date = new Date(isoStr);
+                return date.toLocaleString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit',
+                    hour12: false
+                });
+            } catch (e) {
+                return isoStr;
+            }
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Fetch API Endpoints
+        async function fetchPortfolio() {
+            try {
+                const res = await fetch('/portfolio');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                
+                document.getElementById('metric-cash').textContent = formatNumber(data.cash, 2);
+                document.getElementById('metric-equity').textContent = formatNumber(data.equity, 2);
+                document.getElementById('metric-risk').textContent = formatNumber(data.open_risk, 2);
+                
+                const lossElem = document.getElementById('metric-daily-loss');
+                if (data.daily_loss_breached) {
+                    lossElem.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+                    lossElem.textContent = 'BREACHED (Trading Halted)';
+                } else {
+                    lossElem.className = 'px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                    lossElem.textContent = 'NORMAL (Active)';
+                }
+            } catch (err) {
+                console.warn('Portfolio fetch error:', err);
+                document.getElementById('metric-daily-loss').textContent = 'Disconnected';
+            }
+        }
+
+        async function fetchPositions() {
+            const container = document.getElementById('positions-container');
+            const countBadge = document.getElementById('positions-count');
+            try {
+                const res = await fetch('/positions');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const positions = await res.json();
+                
+                countBadge.textContent = positions.length;
+
+                if (!positions || positions.length === 0) {
+                    container.innerHTML = `
+                        <div class="py-10 text-center">
+                            <svg class="w-8 h-8 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 12H4" />
+                            </svg>
+                            <p class="text-sm font-medium text-slate-400">No active positions</p>
+                            <p class="text-xs text-slate-500 mt-1">Pending signals will open on the next candle open observation</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '<div class="space-y-3">';
+                positions.forEach(pos => {
+                    const entryPrice = formatNumber(pos.entry_fill?.price, 4);
+                    const stopPrice = formatNumber(pos.stop_price, 4);
+                    const targetPrice = formatNumber(pos.target_price, 4);
+                    const qty = formatNumber(pos.quantity, 6);
+                    const risk = formatNumber(pos.initial_risk, 2);
+                    const entryTime = formatDateTime(pos.entry_fill?.timestamp);
+
+                    html += `
+                        <div class="p-3.5 bg-slate-950/60 rounded-lg border border-slate-800 hover:border-slate-700 transition">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-white tracking-wide">${escapeHtml(pos.symbol)}</span>
+                                    <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">LONG</span>
+                                </div>
+                                <span class="text-xs text-slate-400">${entryTime}</span>
+                            </div>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                                <div><span class="text-slate-500">Entry:</span> <span class="font-mono text-slate-200">${entryPrice}</span></div>
+                                <div><span class="text-slate-500">Stop:</span> <span class="font-mono text-rose-400">${stopPrice}</span></div>
+                                <div><span class="text-slate-500">Target:</span> <span class="font-mono text-emerald-400">${targetPrice}</span></div>
+                                <div><span class="text-slate-500">Size:</span> <span class="font-mono text-slate-200">${qty}</span></div>
+                            </div>
+                            <div class="mt-2 text-xs text-slate-400 flex items-center justify-between pt-2 border-t border-slate-900">
+                                <span>Initial Risk: <span class="font-mono text-amber-400">${risk} USDT</span></span>
+                                <span class="text-slate-500 text-[11px]">${escapeHtml(pos.exchange)}</span>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (err) {
+                console.warn('Positions fetch error:', err);
+                container.innerHTML = `<div class="py-6 text-center text-xs text-rose-400">Failed to load active positions.</div>`;
+            }
+        }
+
+        async function fetchSignals() {
+            const container = document.getElementById('signals-container');
+            const countBadge = document.getElementById('signals-count');
+            try {
+                const res = await fetch('/signals');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const signals = await res.json();
+
+                countBadge.textContent = signals.length;
+
+                if (!signals || signals.length === 0) {
+                    container.innerHTML = `
+                        <div class="py-10 text-center">
+                            <svg class="w-8 h-8 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            <p class="text-sm font-medium text-slate-400">No pending signals</p>
+                            <p class="text-xs text-slate-500 mt-1">Scanning Binance Spot 1H candle closes for breakout qualification</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = '<div class="space-y-3">';
+                signals.forEach(sig => {
+                    const decisionTime = formatDateTime(sig.decision_time);
+                    const atr = formatNumber(sig.atr_14, 4);
+                    const explanation = sig.explanation ? escapeHtml(sig.explanation) : null;
+
+                    html += `
+                        <div class="p-3.5 bg-slate-950/60 rounded-lg border border-slate-800 hover:border-indigo-900/50 transition">
+                            <div class="flex items-center justify-between mb-2">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-white tracking-wide">${escapeHtml(sig.symbol)}</span>
+                                    <span class="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">PENDING ENTRY</span>
+                                </div>
+                                <span class="text-xs text-slate-400">${decisionTime}</span>
+                            </div>
+                            <div class="text-xs text-slate-300 flex items-center justify-between">
+                                <span>Volatility: <span class="font-mono text-slate-200">ATR(14) = ${atr}</span></span>
+                                <span class="text-slate-500 text-[11px]">${escapeHtml(sig.exchange)}</span>
+                            </div>
+                            ${explanation ? `
+                                <div class="mt-2.5 p-2.5 bg-slate-900/90 rounded border border-indigo-950/60 text-xs text-indigo-200 font-sans leading-relaxed">
+                                    <div class="flex items-center gap-1.5 text-indigo-400 font-semibold text-[11px] mb-1">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                                        </svg>
+                                        AI Signal Commentary
+                                    </div>
+                                    ${explanation}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (err) {
+                console.warn('Signals fetch error:', err);
+                container.innerHTML = `<div class="py-6 text-center text-xs text-rose-400">Failed to load signals.</div>`;
+            }
+        }
+
+        async function fetchTrades() {
+            const container = document.getElementById('trades-container');
+            const countBadge = document.getElementById('trades-count');
+            try {
+                const res = await fetch('/trades');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const trades = await res.json();
+
+                countBadge.textContent = trades.length;
+
+                if (!trades || trades.length === 0) {
+                    container.innerHTML = `
+                        <div class="py-12 text-center">
+                            <svg class="w-10 h-10 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            <p class="text-sm font-medium text-slate-400">No closed trades yet</p>
+                            <p class="text-xs text-slate-500 mt-1">Filled paper trades will appear here along with post-trade AI retrospectives</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Render trades list (most recent first)
+                const reversed = [...trades].reverse();
+                let html = '<div class="space-y-4">';
+                reversed.forEach(t => {
+                    const netPnl = parseFloat(t.net_pnl);
+                    const isProfit = netPnl >= 0;
+                    const pnlColor = isProfit ? 'text-emerald-400' : 'text-rose-400';
+                    const pnlSign = isProfit ? '+' : '';
+                    const reasonBadge = t.exit_reason === 'take_profit' 
+                        ? '<span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">TAKE PROFIT</span>'
+                        : '<span class="text-xs font-semibold px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20">STOP LOSS</span>';
+
+                    const entryPrice = formatNumber(t.entry_fill?.price, 4);
+                    const exitPrice = formatNumber(t.exit_fill?.price, 4);
+                    const qty = formatNumber(t.quantity, 6);
+                    const fee = formatNumber((parseFloat(t.entry_fill?.fee || 0) + parseFloat(t.exit_fill?.fee || 0)), 4);
+                    const exitTime = formatDateTime(t.exit_fill?.timestamp);
+                    const explanation = t.explanation ? escapeHtml(t.explanation) : null;
+
+                    html += `
+                        <div class="p-4 bg-slate-950/70 rounded-xl border border-slate-800 hover:border-slate-700 transition">
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+                                <div class="flex items-center gap-2.5">
+                                    <span class="font-bold text-white text-base">${escapeHtml(t.symbol)}</span>
+                                    ${reasonBadge}
+                                </div>
+                                <div class="flex items-baseline gap-2">
+                                    <span class="text-xs text-slate-400">Net PnL:</span>
+                                    <span class="font-mono font-bold text-base ${pnlColor}">${pnlSign}${formatNumber(netPnl, 4)} USDT</span>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-900/60 p-3 rounded-lg border border-slate-850">
+                                <div><span class="text-slate-500 block">Entry:</span> <span class="font-mono text-slate-200">${entryPrice}</span></div>
+                                <div><span class="text-slate-500 block">Exit:</span> <span class="font-mono text-slate-200">${exitPrice}</span></div>
+                                <div><span class="text-slate-500 block">Quantity:</span> <span class="font-mono text-slate-200">${qty}</span></div>
+                                <div><span class="text-slate-500 block">Total Fees:</span> <span class="font-mono text-slate-400">${fee} USDT</span></div>
+                            </div>
+
+                            <div class="mt-2 text-xs text-slate-500 flex items-center justify-between px-1">
+                                <span>Closed: ${exitTime}</span>
+                                <span>${escapeHtml(t.exchange)}</span>
+                            </div>
+
+                            ${explanation ? `
+                                <div class="mt-3 p-3 bg-slate-900 rounded-lg border border-slate-800 text-xs text-slate-300 leading-relaxed">
+                                    <div class="flex items-center gap-1.5 text-indigo-400 font-semibold mb-1.5 text-[11px]">
+                                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                        </svg>
+                                        AI Trade Retrospective
+                                    </div>
+                                    <div class="whitespace-pre-wrap font-sans text-slate-300">${explanation}</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            } catch (err) {
+                console.warn('Trades fetch error:', err);
+                container.innerHTML = `<div class="py-6 text-center text-xs text-rose-400">Failed to load trade history.</div>`;
+            }
+        }
+
+        // Orchestrate Refresh
+        async function refreshDashboard() {
+            const refreshIcon = document.getElementById('refresh-icon');
+            if (refreshIcon) refreshIcon.classList.add('animate-spin');
+
+            try {
+                await Promise.allSettled([
+                    fetchPortfolio(),
+                    fetchPositions(),
+                    fetchSignals(),
+                    fetchTrades()
+                ]);
+                const now = new Date();
+                document.getElementById('last-updated').textContent = now.toLocaleTimeString();
+            } finally {
+                if (refreshIcon) {
+                    setTimeout(() => refreshIcon.classList.remove('animate-spin'), 400);
+                }
+            }
+        }
+
+        // Initialize and Set Interval
+        document.addEventListener('DOMContentLoaded', () => {
+            refreshDashboard();
+            setInterval(refreshDashboard, 10000);
+        });
+    </script>
+</body>
+</html>
+

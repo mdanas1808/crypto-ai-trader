@@ -9,9 +9,11 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
 
 from app.backtest.models import Fill, Position, Trade
@@ -60,6 +62,7 @@ class SignalResponse(BaseModel):
     decision_time: datetime
     signal_open_time: datetime
     atr_14: float
+    explanation: str | None = None
 
     @classmethod
     def from_signal(cls, signal: BreakoutSignal) -> SignalResponse:
@@ -70,6 +73,7 @@ class SignalResponse(BaseModel):
             decision_time=signal.decision_time,
             signal_open_time=signal.signal_open_time,
             atr_14=signal.atr_14,
+            explanation=getattr(signal, "explanation", None),
         )
 
 
@@ -113,6 +117,7 @@ class TradeResponse(BaseModel):
     gross_pnl: Decimal
     net_pnl: Decimal
     signal: SignalResponse
+    explanation: str | None = None
 
     @classmethod
     def from_trade(cls, trade: Trade) -> TradeResponse:
@@ -128,6 +133,7 @@ class TradeResponse(BaseModel):
             gross_pnl=trade.gross_pnl,
             net_pnl=trade.net_pnl,
             signal=SignalResponse.from_signal(trade.signal),
+            explanation=getattr(trade, "explanation", None),
         )
 
 
@@ -198,6 +204,17 @@ def create_dashboard_router(
                 detail="Paper session is not available",
             )
         return target
+
+    @router.get("/", response_class=FileResponse)
+    @router.get("/ui", response_class=FileResponse)
+    def serve_ui() -> FileResponse:
+        static_index = Path(__file__).resolve().parent.parent / "static" / "index.html"
+        if not static_index.is_file():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Dashboard static index.html not found",
+            )
+        return FileResponse(static_index, media_type="text/html")
 
     @router.get("/portfolio", response_model=PortfolioResponse)
     def get_portfolio(

@@ -126,7 +126,7 @@ class PaperSession:
             trade = None
             if event.interval == "1h":
                 trade = self.executor.on_candle_closed(event)
-                if trade is not None and self.alert_handler is not None:
+                if trade is not None:
                     explanation = ""
                     if self.explainer is not None:
                         try:
@@ -139,36 +139,47 @@ class PaperSession:
                             logger.warning(
                                 "Failed to generate trade exit explanation: %s", exc
                             )
-                    await self._notify("on_exit_filled", trade, explanation)
+                    if explanation:
+                        try:
+                            object.__setattr__(trade, "explanation", explanation)
+                        except Exception:
+                            pass
+                    if self.alert_handler is not None:
+                        await self._notify("on_exit_filled", trade, explanation)
 
                 signals, context_data = await self._generate_signals_with_context(event)
                 for sig in signals:
                     if self.executor.submit_signal(sig):
                         self._signals_submitted += 1
-                        if self.alert_handler is not None:
-                            explanation = ""
-                            if self.explainer is not None:
-                                if isinstance(
-                                    context_data, MultiTimeframeBacktestData
-                                ):
-                                    try:
-                                        res = self.explainer.explain_signal(
-                                            sig, context_data
-                                        )
-                                        if inspect.isawaitable(res):
-                                            explanation = await res
-                                        else:
-                                            explanation = res
-                                    except Exception as exc:
-                                        logger.warning(
-                                            "Failed to generate signal explanation: %s",
-                                            exc,
-                                        )
-                                else:
-                                    explanation = (
-                                        f"Breakout Long Signal for {sig.symbol} "
-                                        f"({sig.exchange}) at {sig.decision_time.isoformat()}."
+                        explanation = ""
+                        if self.explainer is not None:
+                            if isinstance(
+                                context_data, MultiTimeframeBacktestData
+                            ):
+                                try:
+                                    res = self.explainer.explain_signal(
+                                        sig, context_data
                                     )
+                                    if inspect.isawaitable(res):
+                                        explanation = await res
+                                    else:
+                                        explanation = res
+                                except Exception as exc:
+                                    logger.warning(
+                                        "Failed to generate signal explanation: %s",
+                                        exc,
+                                    )
+                            else:
+                                explanation = (
+                                    f"Breakout Long Signal for {sig.symbol} "
+                                    f"({sig.exchange}) at {sig.decision_time.isoformat()}."
+                                )
+                        if explanation:
+                            try:
+                                object.__setattr__(sig, "explanation", explanation)
+                            except Exception:
+                                pass
+                        if self.alert_handler is not None:
                             await self._notify(
                                 "on_signal_generated", sig, explanation
                             )
