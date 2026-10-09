@@ -130,7 +130,11 @@ class PaperSession:
                     explanation = ""
                     if self.explainer is not None:
                         try:
-                            explanation = self.explainer.explain_trade_exit(trade)
+                            res = self.explainer.explain_trade_exit(trade)
+                            if inspect.isawaitable(res):
+                                explanation = await res
+                            else:
+                                explanation = res
                         except Exception as exc:
                             logger.warning(
                                 "Failed to generate trade exit explanation: %s", exc
@@ -148,9 +152,13 @@ class PaperSession:
                                     context_data, MultiTimeframeBacktestData
                                 ):
                                     try:
-                                        explanation = self.explainer.explain_signal(
+                                        res = self.explainer.explain_signal(
                                             sig, context_data
                                         )
+                                        if inspect.isawaitable(res):
+                                            explanation = await res
+                                        else:
+                                            explanation = res
                                     except Exception as exc:
                                         logger.warning(
                                             "Failed to generate signal explanation: %s",
@@ -243,6 +251,11 @@ class PaperSession:
                 await self.process_event(event)
         except (asyncio.CancelledError, KeyboardInterrupt):
             logger.info("Paper session cancelled or interrupted, exiting gracefully.")
+        except Exception:
+            logger.exception("Stream error in PaperSession")
+        else:
+            if self._running:
+                logger.warning("Market stream ended unexpectedly.")
         finally:
             for sig in registered_signals:
                 try:
