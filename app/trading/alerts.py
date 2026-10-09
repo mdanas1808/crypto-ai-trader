@@ -1,13 +1,15 @@
 """Alerting and event notification interfaces for paper trading sessions.
 
-Provides the AlertHandler protocol and a default LoggingAlertHandler that
-formats and logs strategy events using Python standard logging.
+Provides the AlertHandler protocol, a default LoggingAlertHandler that
+formats and logs strategy events, and a CompositeAlertHandler for multiplexing.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+import inspect
 import logging
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from app.backtest.models import Position, Trade
 from app.strategy.breakout import BreakoutSignal
@@ -84,3 +86,56 @@ class LoggingAlertHandler:
             len(executor.positions),
         )
 
+
+class CompositeAlertHandler:
+    """Dispatches alert callbacks to multiple AlertHandler instances."""
+
+    def __init__(self, handlers: Iterable[AlertHandler] | None = None) -> None:
+        self.handlers: list[AlertHandler] = list(handlers or [])
+
+    def add_handler(self, handler: AlertHandler) -> None:
+        self.handlers.append(handler)
+
+    def _dispatch(self, method_name: str, *args: Any) -> Any:
+        coroutines = []
+        for handler in self.handlers:
+            method = getattr(handler, method_name, None)
+            if method is not None and callable(method):
+                try:
+                    res = method(*args)
+                    if inspect.iscoroutine(res):
+                        coroutines.append(res)
+                except Exception as exc:
+                    logger.warning(
+                        "Error in composite alert handler %s %s: %s",
+                        type(handler).__name__,
+                        method_name,
+                        exc,
+                        exc_info=True,
+                    )
+        if coroutines:
+            async def _await_all() -> None:
+                for coro in coroutines:
+                    try:
+                        await coro
+                    except Exception as exc:
+                        logger.warning(
+                            "Error awaiting async alert handler: %s", exc, exc_info=True
+                        )
+            return _await_all()
+        return None
+
+    def on_signal_generated(self, signal: BreakoutSignal, explanation: str) -> Any:
+        return self._dispatch("on_signal_generated", signal, explanation)
+
+    def on_entry_filled(self, position: Position) -> Any:
+        return self._dispatch("on_entry_filled", position)
+
+    def on_exit_filled(self, trade: Trade, explanation: str) -> Any:
+        return self._dispatch("on_exit_filled", trade, explanation)
+
+    def on_daily_loss_breached(self, executor: PaperExecutor) -> Any:
+        return self._dispatch("on_daily_loss_breached", executor)
+
+
+__all__ = ["AlertHandler", "LoggingAlertHandler", "CompositeAlertHandler"]

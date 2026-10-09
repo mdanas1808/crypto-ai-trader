@@ -18,7 +18,7 @@ from app.backtest.data import MultiTimeframeBacktestData
 from app.backtest.models import Position, Trade
 from app.market.models import Candle, CandleOpenObservation
 from app.strategy.breakout import BreakoutSignal, generate_breakout_signals
-from app.trading.alerts import AlertHandler
+from app.trading.alerts import AlertHandler, CompositeAlertHandler
 from app.trading.paper import PaperExecutor
 
 logger = logging.getLogger(__name__)
@@ -34,7 +34,7 @@ class PaperSession:
         strategy: Callable[..., Sequence[BreakoutSignal]] | None = None,
         *,
         data_provider: Callable[[Candle], MultiTimeframeBacktestData | None] | None = None,
-        alert_handler: AlertHandler | None = None,
+        alert_handler: AlertHandler | Sequence[AlertHandler] | None = None,
         explainer: TradeExplainer | None = None,
     ) -> None:
         if not isinstance(executor, PaperExecutor):
@@ -46,7 +46,10 @@ class PaperSession:
         self.executor = executor
         self.strategy = strategy if strategy is not None else generate_breakout_signals
         self.data_provider = data_provider
-        self.alert_handler = alert_handler
+        if isinstance(alert_handler, (list, tuple, set)):
+            self.alert_handler: AlertHandler | None = CompositeAlertHandler(alert_handler)
+        else:
+            self.alert_handler = alert_handler
         self.explainer = explainer
 
         self._running = False
