@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from decimal import Decimal
 import asyncio
+import logging
 import pytest
 from fastapi.testclient import TestClient
 import uvicorn
@@ -69,6 +70,8 @@ def test_build_app_contains_all_routes():
     # Market routes
     assert client.get("/health").status_code == 200
     # Dashboard routes
+    assert client.get("/").status_code == 200
+    assert client.get("/ui").status_code == 200
     assert client.get("/portfolio").status_code == 200
     assert client.get("/positions").status_code == 200
     assert client.get("/trades").status_code == 200
@@ -123,4 +126,81 @@ async def test_main_initializes_components_when_session_none():
     )
 
     assert server.serve_called
+
+
+class CrashingServer:
+    """Mock server that crashes during serve."""
+
+    def __init__(self) -> None:
+        self.should_exit = False
+        self.serve_called = False
+
+    async def serve(self) -> None:
+        self.serve_called = True
+        await asyncio.sleep(0.01)
+        raise RuntimeError("Uvicorn failed to bind address")
+
+
+@pytest.mark.asyncio
+async def test_main_logs_crashed_task_exception(caplog):
+    executor = PaperExecutor(BacktestConfig(minimum_quantity=D("0.000001")))
+    session = PaperSession(stream=MockStream(), executor=executor)
+    server = CrashingServer()
+
+    with caplog.at_level(logging.ERROR):
+        await main(
+            session=session,
+            server=server,  # type: ignore
+        )
+
+    assert "crashed with exception" in caplog.text
+    assert "Uvicorn failed to bind address" in caplog.text
+    assert not session.is_running
+
+
+@pytest.mark.asyncio
+async def test_fetch_dynamic_trending_symbols_parses_and_filters_fixed(monkeypatch):
+    from unittest.mock import AsyncMock, MagicMock
+    import httpx
+    from app.main import FIXED_SYMBOLS, fetch_dynamic_trending_symbols
+
+    assert FIXED_SYMBOLS == ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ZECUSDT"]
+
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "coins": [
+            {"item": {"symbol": "btc"}},  # in FIXED_SYMBOLS -> filtered out
+            {"item": {"symbol": "tao"}},
+            {"item": {"symbol": "fet"}},
+            {"item": {"symbol": "render"}},
+        ]
+    }
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(return_value=mock_response)
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: mock_client)
+
+    symbols = await fetch_dynamic_trending_symbols(limit=2)
+    assert symbols == ["TAOUSDT", "FETUSDT"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_dynamic_trending_symbols_fallback_on_network_error(monkeypatch):
+    from unittest.mock import AsyncMock
+    import httpx
+    from app.main import FALLBACK_DYNAMIC_SYMBOLS, fetch_dynamic_trending_symbols
+
+    mock_client = AsyncMock()
+    mock_client.get = AsyncMock(side_effect=httpx.RequestError("network down"))
+    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_client.__aexit__ = AsyncMock(return_value=None)
+
+    monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: mock_client)
+
+    symbols = await fetch_dynamic_trending_symbols(limit=5)
+    assert symbols == FALLBACK_DYNAMIC_SYMBOLS
 

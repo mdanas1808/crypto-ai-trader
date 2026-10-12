@@ -63,6 +63,7 @@ class SignalResponse(BaseModel):
     signal_open_time: datetime
     atr_14: float
     explanation: str | None = None
+    status: str | None = None
 
     @classmethod
     def from_signal(cls, signal: BreakoutSignal) -> SignalResponse:
@@ -74,6 +75,7 @@ class SignalResponse(BaseModel):
             signal_open_time=signal.signal_open_time,
             atr_14=signal.atr_14,
             explanation=getattr(signal, "explanation", None),
+            status=getattr(signal, "status", "PENDING"),
         )
 
 
@@ -268,7 +270,9 @@ def create_dashboard_router(
         if signals is None:
             executor = _resolve_executor(session)
             signals = getattr(executor, "pending_signals", ())
-        return [SignalResponse.from_signal(s) for s in signals]
+        vetoed = getattr(session, "vetoed_signals", ())
+        combined = list(signals) + list(vetoed)
+        return [SignalResponse.from_signal(s) for s in combined]
 
     return router
 

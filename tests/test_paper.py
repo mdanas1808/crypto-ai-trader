@@ -79,7 +79,7 @@ def test_signal_and_next_open_create_decimal_entry_fill_with_both_timestamps():
     assert fill.reference_price == D("10")
     assert fill.price == D("10.0050")
     assert fill.fee == fill.price * fill.quantity * D("0.001")
-    assert fill.quantity == D("0.333333")
+    assert fill.quantity == D("3.333333")
 
 
 def test_signal_after_observed_open_is_not_filled_retroactively():
@@ -103,11 +103,11 @@ def test_entry_stop_target_and_risk_use_decimal_atr_conversion():
     assert position is not None
     assert position.stop_price == D("8.5050")
     assert position.target_price == D("13.0050")
-    assert position.initial_risk == D("0.4999995")
+    assert position.initial_risk == D("4.9999995")
 
 
 def test_minimum_quantity_rejects_entry():
-    executor = PaperExecutor(config(minimum_quantity=D("1")))
+    executor = PaperExecutor(config(minimum_quantity=D("10")))
     prepare_signal(executor)
     assert executor.on_open_observation(observation()) is None
     assert executor.positions == {}
@@ -124,7 +124,7 @@ def test_quantity_step_is_floored_for_paper_entry():
     executor = PaperExecutor(config(quantity_step=D("0.1"), minimum_quantity=D("0.1")))
     _, position = enter_default(executor)
     assert position is not None
-    assert position.quantity == D("0.3")
+    assert position.quantity == D("3.3")
 
 
 def test_same_symbol_open_position_rejects_new_signal_without_pyramiding():
@@ -203,13 +203,13 @@ def test_completed_gap_target_uses_bar_open_when_stop_is_not_touched():
 def test_signal_at_same_time_as_exit_can_be_accepted_after_exit_is_processed():
     executor, _ = enter_default()
     exit_candle = candle(
-        opened=START + timedelta(hours=1), open=D("8"), high=D("9"), low=D("7.5"), close=D("8.5")
+        opened=START + timedelta(hours=1), open=D("12"), high=D("14"), low=D("11.5"), close=D("13.5")
     )
     assert executor.on_candle_closed(exit_candle) is not None
     reentry = signal(opened=START + timedelta(hours=1))
     assert executor.submit_signal(reentry)
     filled = executor.on_open_observation(
-        observation(opened=START + timedelta(hours=2), price=D("8.5"))
+        observation(opened=START + timedelta(hours=2), price=D("13.5"))
     )
     assert filled is not None
 
@@ -250,11 +250,11 @@ def test_multiple_symbols_share_open_risk_and_position_limits():
         executor.on_open_observation(observation(symbol))
         for symbol in ("BTCUSDT", "ETHUSDT", "SOLUSDT")
     ]
-    # The shared 1.5% risk cap may reject the third position after costs.
+    # The shared 15% risk cap (max_concurrent_positions * core_risk_per_trade) rejects the third position after costs.
     assert sum(position is not None for position in positions) == 2
     assert executor.portfolio.open_risk <= executor.portfolio.equity(executor.portfolio.positions and {
         symbol: D("10") for symbol in executor.portfolio.positions
-    } or {}) * D("0.015")
+    } or {}) * D("0.15")
     assert len(executor.positions) <= 3
 
 
@@ -312,3 +312,41 @@ def test_repeated_event_sequence_is_deterministic():
         return trade, executor.cash, executor.trades
 
     assert run_once() == run_once()
+
+
+def test_core_vs_satellite_category_and_dollar_risk_sizing():
+    executor = PaperExecutor(config())
+    assert executor.get_asset_category("BTCUSDT") == "core"
+    assert executor.get_asset_category("ZECUSDT") == "core"
+    assert executor.get_asset_category("TAOUSDT") == "satellite"
+    assert executor.get_asset_category("FETUSDT") == "satellite"
+
+    assert executor.calculate_dollar_risk("BTCUSDT", D("1000")) == D("50.00")
+    assert executor.calculate_dollar_risk("TAOUSDT", D("1000")) == D("40.00")
+
+
+def test_satellite_daily_loss_blocks_satellite_but_allows_core():
+    executor = PaperExecutor(config(quantity_step=D("0.1"), minimum_quantity=D("0.1")))
+    prepare_signal(executor, "TAOUSDT")
+    assert executor.on_open_observation(observation("TAOUSDT")) is not None
+
+    # Trigger >4% loss on TAOUSDT (satellite basket)
+    tao_trade = executor.on_candle_closed(
+        candle("TAOUSDT", START + timedelta(hours=1), open=D("1"), high=D("2"), low=D("0.5"), close=D("1"))
+    )
+    assert tao_trade is not None
+    assert executor.satellite_daily_loss_breached is True
+    assert executor.core_daily_loss_breached is False
+
+    # New satellite entry is blocked
+    prepare_signal(executor, "FETUSDT", START + timedelta(hours=1))
+    assert executor.on_open_observation(
+        observation("FETUSDT", START + timedelta(hours=2), price=D("10"))
+    ) is None
+
+    # Core entry is still allowed
+    prepare_signal(executor, "BTCUSDT", START + timedelta(hours=1))
+    assert executor.on_open_observation(
+        observation("BTCUSDT", START + timedelta(hours=2), price=D("10"))
+    ) is not None
+

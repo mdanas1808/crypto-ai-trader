@@ -1,6 +1,7 @@
 """Unauthenticated Binance Spot WebSocket adapter for completed klines."""
 
 import json
+import logging
 from collections.abc import AsyncIterator, Iterable
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
@@ -12,7 +13,9 @@ from pydantic import ValidationError
 from app.market.constants import SUPPORTED_INTERVALS, SUPPORTED_SYMBOLS
 from app.market.models import Candle, CandleOpenObservation
 
-BINANCE_SPOT_WEBSOCKET_URL = "wss://stream.binance.com:9443/ws"
+logger = logging.getLogger(__name__)
+
+BINANCE_SPOT_WEBSOCKET_URL = "wss://stream.binance.us:9443/ws"
 UTC_EPOCH = datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
@@ -41,24 +44,30 @@ def _decimal_string(value: Any, field: str) -> Decimal:
     return number
 
 
-def _decode_payload(payload: str | bytes) -> dict[str, Any]:
+def _decode_payload(payload: str | bytes | dict[str, Any]) -> dict[str, Any]:
+    if isinstance(payload, dict):
+        return payload
     if isinstance(payload, bytes):
         try:
             payload = payload.decode("utf-8")
         except UnicodeDecodeError as exc:
+            logger.error("WebSocket payload must be UTF-8 JSON: %s", exc)
             raise WebSocketMessageError("WebSocket payload must be UTF-8 JSON") from exc
     if not isinstance(payload, str):
+        logger.error("WebSocket payload must be JSON text or dict, got %s", type(payload).__name__)
         raise WebSocketMessageError("WebSocket payload must be JSON text")
     try:
         decoded = json.loads(payload)
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        logger.error("WebSocket payload is not valid JSON: %s", exc)
         raise WebSocketMessageError("WebSocket payload is not valid JSON") from exc
     if not isinstance(decoded, dict):
+        logger.error("WebSocket payload must be a JSON object, got %s", type(decoded).__name__)
         raise WebSocketMessageError("WebSocket payload must be a JSON object")
     return decoded
 
 
-def parse_kline_message(payload: str | bytes) -> tuple[Candle, bool] | None:
+def parse_kline_message(payload: str | bytes | dict[str, Any]) -> tuple[Candle, bool] | None:
     """Parse a Binance kline event; None denotes a subscription acknowledgement.
 
     The returned boolean is Binance's k.x closed flag and is authoritative.
@@ -129,7 +138,7 @@ def parse_kline_message(payload: str | bytes) -> tuple[Candle, bool] | None:
     return candle, closed
 
 
-def parse_candle_open_observation(payload: str | bytes) -> CandleOpenObservation | None:
+def parse_candle_open_observation(payload: str | bytes | dict[str, Any]) -> CandleOpenObservation | None:
     """Parse only the first-update fields needed for a forming candle's open.
 
     A closed kline and a subscription acknowledgement return ``None``. The
@@ -194,7 +203,8 @@ class BinanceSpotKlineStream:
         symbols: Iterable[str] = SUPPORTED_SYMBOLS,
         interval: str = "1h",
         *,
-        url: str = BINANCE_SPOT_WEBSOCKET_URL,
+        url: str | None = None,
+        base_url: str | None = None,
     ) -> None:
         configured = tuple(symbols)
         if not configured:
@@ -206,11 +216,16 @@ class BinanceSpotKlineStream:
             raise ValueError(f"unsupported symbols: {', '.join(sorted(unsupported))}")
         if not isinstance(interval, str) or interval not in SUPPORTED_INTERVALS:
             raise ValueError(f"unsupported interval: {interval}")
-        if not isinstance(url, str) or not url:
+        resolved_url = base_url if base_url is not None else (url if url is not None else BINANCE_SPOT_WEBSOCKET_URL)
+        if not isinstance(resolved_url, str) or not resolved_url:
             raise ValueError("url must be a non-empty string")
         self.symbols = tuple(sorted(set(configured)))
         self.interval = interval
-        self.url = url
+        self.url = resolved_url
+
+    @property
+    def base_url(self) -> str:
+        return self.url
 
     @property
     def stream_names(self) -> tuple[str, ...]:
@@ -232,7 +247,37 @@ class BinanceSpotKlineStream:
         last_open_times: dict[tuple[str, str, str], datetime] = {}
         async with websockets.connect(self.url) as websocket:
             await websocket.send(self.subscription_message)
-            async for payload in websocket:
+            async for raw_message in websocket:
+                try:
+                    if isinstance(raw_message, (str, bytes)):
+                        msg = json.loads(raw_message)
+                    elif isinstance(raw_message, dict):
+                        msg = raw_message
+                    else:
+                        logger.error(
+                            "Unexpected WebSocket message type: %s",
+                            type(raw_message).__name__,
+                        )
+                        continue
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    logger.error("Failed to parse incoming WebSocket JSON message: %s", exc)
+                    continue
+                except Exception as exc:
+                    logger.error("Unexpected error decoding WebSocket message: %s", exc)
+                    continue
+
+                if not isinstance(msg, dict):
+                    logger.error(
+                        "WebSocket payload must be a JSON object, got %s",
+                        type(msg).__name__,
+                    )
+                    continue
+
+                if "data" in msg:
+                    payload = msg["data"]
+                else:
+                    payload = msg
+
                 observation = parse_candle_open_observation(payload)
                 if observation is not None:
                     if observation.symbol not in self.symbols or observation.interval != self.interval:
@@ -265,7 +310,37 @@ class BinanceSpotKlineStream:
         """
         async with websockets.connect(self.url) as websocket:
             await websocket.send(self.subscription_message)
-            async for payload in websocket:
+            async for raw_message in websocket:
+                try:
+                    if isinstance(raw_message, (str, bytes)):
+                        msg = json.loads(raw_message)
+                    elif isinstance(raw_message, dict):
+                        msg = raw_message
+                    else:
+                        logger.error(
+                            "Unexpected WebSocket message type: %s",
+                            type(raw_message).__name__,
+                        )
+                        continue
+                except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+                    logger.error("Failed to parse incoming WebSocket JSON message: %s", exc)
+                    continue
+                except Exception as exc:
+                    logger.error("Unexpected error decoding WebSocket message: %s", exc)
+                    continue
+
+                if not isinstance(msg, dict):
+                    logger.error(
+                        "WebSocket payload must be a JSON object, got %s",
+                        type(msg).__name__,
+                    )
+                    continue
+
+                if "data" in msg:
+                    payload = msg["data"]
+                else:
+                    payload = msg
+
                 parsed = parse_kline_message(payload)
                 if parsed is None:
                     continue

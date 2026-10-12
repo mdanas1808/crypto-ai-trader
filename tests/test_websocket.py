@@ -89,7 +89,7 @@ def test_invalid_close_timestamp_is_rejected():
         parse_kline_message(payload(T="1704067200000"))
 
 
-@pytest.mark.parametrize("symbol", ["BNBUSDT", ""])
+@pytest.mark.parametrize("symbol", ["DOGEUSDT", ""])
 def test_unexpected_symbol_is_rejected(symbol):
     with pytest.raises(WebSocketMessageError, match="unsupported symbol"):
         parse_kline_message(payload(s=symbol))
@@ -155,6 +155,13 @@ def test_subscription_stream_names_are_deterministic():
         "solusdt@kline_1h",
     )
     assert stream.url == BINANCE_SPOT_WEBSOCKET_URL
+    assert stream.base_url == "wss://stream.binance.us:9443/ws"
+
+
+def test_stream_custom_base_url():
+    stream = BinanceSpotKlineStream(symbols=("BTCUSDT",), base_url="wss://custom.stream:9443/ws")
+    assert stream.url == "wss://custom.stream:9443/ws"
+    assert stream.base_url == "wss://custom.stream:9443/ws"
 
 
 def test_subscription_message_is_deterministic_and_valid():
@@ -177,7 +184,7 @@ def test_empty_symbol_configuration_is_rejected():
 
 def test_unsupported_symbol_configuration_is_rejected():
     with pytest.raises(ValueError, match="unsupported symbols"):
-        BinanceSpotKlineStream(symbols=("BNBUSDT",))
+        BinanceSpotKlineStream(symbols=("DOGEUSDT",))
 
 
 def test_malformed_json_is_rejected():
@@ -303,3 +310,126 @@ def test_forming_open_observation_requires_binance_event_time():
     del data["E"]
     with pytest.raises(WebSocketMessageError, match="event time"):
         parse_candle_open_observation(json.dumps(data))
+
+
+def test_stream_candles_with_combined_stream_data_payload(monkeypatch):
+    combined_message = json.dumps({
+        "stream": "btcusdt@kline_1h",
+        "data": json.loads(payload(closed=True)),
+    })
+    fake = FakeWebSocket([
+        '{"result":null,"id":1}',
+        combined_message,
+    ])
+    monkeypatch.setattr("app.market.websocket.websockets.connect", lambda _url: fake)
+    stream = BinanceSpotKlineStream(symbols=("BTCUSDT",))
+
+    async def collect():
+        return [candle async for candle in stream.candles()]
+
+    candles = asyncio.run(collect())
+    assert len(candles) == 1
+    assert candles[0].symbol == "BTCUSDT"
+    assert candles[0].close == Decimal("42050.12345678")
+
+
+def test_stream_events_with_combined_stream_data_payload(monkeypatch):
+    from app.market.models import CandleOpenObservation
+
+    open_combined = json.dumps({
+        "stream": "btcusdt@kline_1h",
+        "data": json.loads(event_payload(closed=False, event_time=OPEN_MS + 1000)),
+    })
+    closed_combined = json.dumps({
+        "stream": "btcusdt@kline_1h",
+        "data": json.loads(event_payload(closed=True)),
+    })
+    fake = FakeWebSocket([
+        '{"result":null,"id":1}',
+        open_combined,
+        closed_combined,
+    ])
+    monkeypatch.setattr("app.market.websocket.websockets.connect", lambda _url: fake)
+    stream = BinanceSpotKlineStream(symbols=("BTCUSDT",))
+
+    async def collect():
+        return [event async for event in stream.events()]
+
+    events = asyncio.run(collect())
+    assert len(events) == 2
+    assert isinstance(events[0], CandleOpenObservation)
+    assert events[0].symbol == "BTCUSDT"
+    assert events[0].open == Decimal("42000.12345678")
+    assert isinstance(events[1], Candle)
+    assert events[1].symbol == "BTCUSDT"
+    assert events[1].close == Decimal("42050.12345678")
+
+
+def test_stream_logs_error_on_invalid_json_and_continues(monkeypatch, caplog):
+    import logging
+
+    fake = FakeWebSocket([
+        '{"result":null,"id":1}',
+        "{malformed-json-here",
+        payload(closed=True),
+    ])
+    monkeypatch.setattr("app.market.websocket.websockets.connect", lambda _url: fake)
+    stream = BinanceSpotKlineStream(symbols=("BTCUSDT",))
+
+    async def collect():
+        return [candle async for candle in stream.candles()]
+
+    with caplog.at_level(logging.ERROR):
+        candles = asyncio.run(collect())
+
+    assert len(candles) == 1
+    assert any("Failed to parse incoming WebSocket JSON message" in record.message for record in caplog.records)
+
+
+def test_stream_logs_error_on_non_dict_json(monkeypatch, caplog):
+    import logging
+
+    fake = FakeWebSocket([
+        '{"result":null,"id":1}',
+        "12345",
+        payload(closed=True),
+    ])
+    monkeypatch.setattr("app.market.websocket.websockets.connect", lambda _url: fake)
+    stream = BinanceSpotKlineStream(symbols=("BTCUSDT",))
+
+    async def collect():
+        return [candle async for candle in stream.candles()]
+
+    with caplog.at_level(logging.ERROR):
+        candles = asyncio.run(collect())
+
+    assert len(candles) == 1
+    assert any("WebSocket payload must be a JSON object" in record.message for record in caplog.records)
+
+
+def test_parse_kline_message_accepts_dict_directly():
+    raw_dict = json.loads(payload())
+    candle, closed = parse_kline_message(raw_dict)
+    assert closed is True
+    assert candle.symbol == "BTCUSDT"
+
+    wrapped_dict = {"stream": "btcusdt@kline_1h", "data": raw_dict}
+    candle_w, closed_w = parse_kline_message(wrapped_dict)
+    assert closed_w is True
+    assert candle_w.symbol == "BTCUSDT"
+
+
+def test_parse_candle_open_observation_accepts_dict_directly():
+    from app.market.models import CandleOpenObservation
+    from app.market.websocket import parse_candle_open_observation
+
+    raw_dict = json.loads(event_payload(closed=False))
+    obs = parse_candle_open_observation(raw_dict)
+    assert isinstance(obs, CandleOpenObservation)
+    assert obs.symbol == "BTCUSDT"
+
+    wrapped_dict = {"stream": "btcusdt@kline_1h", "data": raw_dict}
+    obs_w = parse_candle_open_observation(wrapped_dict)
+    assert isinstance(obs_w, CandleOpenObservation)
+    assert obs_w.symbol == "BTCUSDT"
+

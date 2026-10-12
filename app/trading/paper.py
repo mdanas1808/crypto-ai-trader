@@ -7,10 +7,11 @@ objects manage existing positions and are never used to reconstruct an entry.
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+from typing import Literal
 
 from app.backtest.models import BacktestConfig, Fill, Position, Trade
-from app.backtest.portfolio import Portfolio
-from app.market.constants import EXCHANGE, SUPPORTED_SYMBOLS
+from app.backtest.portfolio import Portfolio, get_asset_category
+from app.market.constants import EXCHANGE, FIXED_SYMBOLS, SUPPORTED_SYMBOLS
 from app.market.models import Candle, CandleOpenObservation
 from app.strategy.breakout import BreakoutSignal
 
@@ -23,11 +24,26 @@ class PaperExecutor:
     def __init__(self, config: BacktestConfig) -> None:
         if not isinstance(config, BacktestConfig):
             raise TypeError("config must be BacktestConfig")
-        self.portfolio = Portfolio(config)
+        self.config = config
+        self.portfolio = Portfolio(config, split_risk=True)
         self._pending: dict[str, BreakoutSignal] = {}
         self._last_closed: dict[str, Candle] = {}
         self._last_open_observation: dict[str, datetime] = {}
         self._marks: dict[str, Decimal] = {}
+
+    @staticmethod
+    def get_asset_category(symbol: str) -> Literal["core", "satellite"]:
+        """Determine asset category ('core' if symbol in FIXED_SYMBOLS else 'satellite')."""
+        return get_asset_category(symbol)
+
+    def calculate_dollar_risk(
+        self, symbol: str, equity: Decimal | None = None
+    ) -> Decimal:
+        """Calculate dollar risk for a symbol using category-specific sizing."""
+        current_equity = (
+            equity if equity is not None else self.portfolio.equity(self._marks)
+        )
+        return self.portfolio.calculate_dollar_risk(symbol, current_equity)
 
     @property
     def pending_signals(self) -> tuple[BreakoutSignal, ...]:
@@ -48,6 +64,14 @@ class PaperExecutor:
     @property
     def daily_loss_breached(self) -> bool:
         return self.portfolio.daily_loss_breached
+
+    @property
+    def core_daily_loss_breached(self) -> bool:
+        return self.portfolio.core_daily_loss_breached
+
+    @property
+    def satellite_daily_loss_breached(self) -> bool:
+        return self.portfolio.satellite_daily_loss_breached
 
     def submit_signal(self, signal: BreakoutSignal) -> bool:
         """Queue a signal only while its next-candle open has not been observed."""
@@ -152,6 +176,71 @@ class PaperExecutor:
         self._last_closed[symbol] = candle
         self.portfolio.update_day(decision_time, self._marks)
         return trade
+
+    def close_position(
+        self,
+        symbol: str,
+        *,
+        reason: str = "close",
+        timestamp: datetime | None = None,
+        reference_price: Decimal | None = None,
+    ) -> Trade | None:
+        """Close an active position immediately at reference mark or entry price."""
+        pos = self.portfolio.positions.get(symbol)
+        if pos is None:
+            return None
+        now = timestamp if timestamp is not None else datetime.now(timezone.utc)
+        ref = (
+            reference_price
+            if reference_price is not None
+            else self._marks.get(symbol, pos.entry_fill.price)
+        )
+        trade = self.portfolio.exit(
+            symbol,
+            timestamp=now,
+            reference_price=ref,
+            reason=reason,
+        )
+        return trade
+
+    def reduce_position(
+        self,
+        symbol: str,
+        *,
+        fraction: Decimal = Decimal("0.5"),
+        reduce_ratio: Decimal | float | None = None,
+        reason: str = "reduce",
+        timestamp: datetime | None = None,
+        reference_price: Decimal | None = None,
+    ) -> Trade | None:
+        """Reduce an active position's size or close it if below minimum quantity."""
+        if reduce_ratio is not None:
+            fraction = Decimal(str(reduce_ratio))
+        pos = self.portfolio.positions.get(symbol)
+        if pos is None:
+            return None
+        now = timestamp if timestamp is not None else datetime.now(timezone.utc)
+        ref = (
+            reference_price
+            if reference_price is not None
+            else self._marks.get(symbol, pos.entry_fill.price)
+        )
+        if hasattr(self.portfolio, "reduce") and callable(self.portfolio.reduce):
+            return self.portfolio.reduce(
+                symbol,
+                fraction=fraction,
+                reduce_ratio=reduce_ratio,
+                timestamp=now,
+                reference_price=ref,
+                reason=reason,
+            )
+        return self.portfolio.exit(
+            symbol,
+            timestamp=now,
+            reference_price=ref,
+            reason=reason,
+        )
+
 
 
 def _exit_condition(position: Position, candle: Candle) -> tuple[str | None, Decimal]:

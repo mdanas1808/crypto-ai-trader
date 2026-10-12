@@ -161,7 +161,7 @@ def test_candle_open_observation_rejects_unsupported_identity_and_naive_times() 
     from app.market.models import CandleOpenObservation
 
     for field, value, message in (
-        ("symbol", "BNBUSDT", "unsupported symbol"),
+        ("symbol", "DOGEUSDT", "unsupported symbol"),
         ("interval", "15m", "unsupported interval"),
         ("open_time", datetime(2024, 1, 1), "timezone"),
         ("observed_at", datetime(2024, 1, 1), "timezone"),
