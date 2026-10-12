@@ -9,7 +9,6 @@ import pytest
 from app.backtest.data import MultiTimeframeBacktestData
 from app.strategy.breakout import BreakoutSignal, generate_breakout_signals
 
-
 UTC = timezone.utc
 START = datetime(2024, 1, 2, 0, 0, tzinfo=UTC)
 
@@ -36,7 +35,9 @@ def _make_data(
                 "high": context_high,
             }
         )
-    context = pd.DataFrame(context_rows, index=pd.DatetimeIndex(context_times, name="decision_time", tz="UTC"))
+    context = pd.DataFrame(
+        context_rows, index=pd.DatetimeIndex(context_times, name="decision_time", tz="UTC")
+    )
 
     trading_rows = []
     trading_times = []
@@ -160,20 +161,25 @@ def test_volume_exactly_one_and_a_half_times_average_allows_signal():
 
 
 def test_breakout_equality_does_not_signal():
-    assert generate_breakout_signals(
-        _make_data(trading_close=Decimal("100"))
-    ) == []
+    assert generate_breakout_signals(_make_data(trading_close=Decimal("100"))) == []
 
 
 def test_close_strictly_above_previous_twenty_high_signals():
-    assert len(generate_breakout_signals(
-        _make_data(context_high=Decimal("100"), trading_close=Decimal("100.01"))
-    )) == 1
+    assert (
+        len(
+            generate_breakout_signals(
+                _make_data(context_high=Decimal("100"), trading_close=Decimal("100.01"))
+            )
+        )
+        == 1
+    )
 
 
 def test_current_candle_high_is_excluded_from_breakout_reference():
     signals = generate_breakout_signals(
-        _make_data(context_high=Decimal("100"), trading_close=Decimal("101"), trading_high=Decimal("999"))
+        _make_data(
+            context_high=Decimal("100"), trading_close=Decimal("101"), trading_high=Decimal("999")
+        )
     )
     assert len(signals) == 1
 
@@ -183,9 +189,12 @@ def test_fewer_than_twenty_prior_candles_does_not_signal():
 
 
 def test_missing_four_hour_row_does_not_signal():
-    assert generate_breakout_signals(
-        _make_data(updates={"4h_open_time": pd.NaT, "4h_completion_time": pd.NaT})
-    ) == []
+    assert (
+        generate_breakout_signals(
+            _make_data(updates={"4h_open_time": pd.NaT, "4h_completion_time": pd.NaT})
+        )
+        == []
+    )
 
 
 @pytest.mark.parametrize("column", ["4h_ema_20", "4h_ema_50", "4h_close", "4h_ema_200"])

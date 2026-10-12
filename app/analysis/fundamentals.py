@@ -8,9 +8,9 @@ and formats them into structured <news_data> XML blocks.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -115,27 +115,15 @@ def _matches_category_or_tags(item: dict[str, Any], ticker: str, symbol: str) ->
 
     cats = item.get("categories")
     if isinstance(cats, str) and cats.strip():
-        cat_tokens.update(
-            part.strip().upper()
-            for part in re.split(r"[|,]", cats)
-            if part.strip()
-        )
+        cat_tokens.update(part.strip().upper() for part in re.split(r"[|,]", cats) if part.strip())
     elif isinstance(cats, (list, tuple, set)):
-        cat_tokens.update(
-            str(part).strip().upper() for part in cats if str(part).strip()
-        )
+        cat_tokens.update(str(part).strip().upper() for part in cats if str(part).strip())
 
     tags = item.get("tags")
     if isinstance(tags, str) and tags.strip():
-        cat_tokens.update(
-            part.strip().upper()
-            for part in re.split(r"[|,]", tags)
-            if part.strip()
-        )
+        cat_tokens.update(part.strip().upper() for part in re.split(r"[|,]", tags) if part.strip())
     elif isinstance(tags, (list, tuple, set)):
-        cat_tokens.update(
-            str(part).strip().upper() for part in tags if str(part).strip()
-        )
+        cat_tokens.update(str(part).strip().upper() for part in tags if str(part).strip())
 
     if cat_tokens:
         return any(target in cat_tokens for target in valid_targets)
@@ -162,12 +150,18 @@ def _calculate_age_hours(published_val: Any, now: datetime) -> int:
             pub_dt = datetime.fromtimestamp(float(published_val), tz=timezone.utc)
         elif isinstance(published_val, str):
             clean = published_val.strip()
-            if clean.isdigit() or (clean.replace(".", "", 1).isdigit() and not clean.startswith("-")):
+            if clean.isdigit() or (
+                clean.replace(".", "", 1).isdigit() and not clean.startswith("-")
+            ):
                 pub_dt = datetime.fromtimestamp(float(clean), tz=timezone.utc)
             else:
                 pub_dt = datetime.fromisoformat(clean.replace("Z", "+00:00"))
         elif isinstance(published_val, datetime):
-            pub_dt = published_val if published_val.tzinfo is not None else published_val.replace(tzinfo=timezone.utc)
+            pub_dt = (
+                published_val
+                if published_val.tzinfo is not None
+                else published_val.replace(tzinfo=timezone.utc)
+            )
         else:
             return 0
         diff_seconds = (now - pub_dt).total_seconds()
@@ -277,10 +271,7 @@ async def fetch_recent_news_items(
             source = _extract_source_name(item)
             headline = str(item.get("title") or item.get("headline") or "").strip()
             body = str(
-                item.get("body")
-                or item.get("summary")
-                or item.get("description")
-                or ""
+                item.get("body") or item.get("summary") or item.get("description") or ""
             ).strip()
             summary = body[:300].strip() if len(body) > 300 else body
 
@@ -292,9 +283,9 @@ async def fetch_recent_news_items(
                 continue
 
             cat_tag_match = _matches_category_or_tags(item, ticker, symbol)
-            regex_match = _matches_symbol_regex(
-                headline, ticker, symbol
-            ) or _matches_symbol_regex(summary, ticker, symbol)
+            regex_match = _matches_symbol_regex(headline, ticker, symbol) or _matches_symbol_regex(
+                summary, ticker, symbol
+            )
 
             # Discard any lowercase or ordinary prose matches for all assets
             has_prose_match = bool(
@@ -332,9 +323,7 @@ async def fetch_recent_news_items(
             type(exc).__name__,
             exc,
         )
-        raise NewsFetchError(
-            f"Failed to fetch recent news for {symbol}: {exc}"
-        ) from exc
+        raise NewsFetchError(f"Failed to fetch recent news for {symbol}: {exc}") from exc
 
 
 async def fetch_recent_news(

@@ -8,9 +8,9 @@ are blocked. Exits and position reviews for existing positions are never blocked
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from decimal import Decimal
-import logging
 from typing import Any, Awaitable, Callable, Sequence
 
 import httpx
@@ -67,6 +67,54 @@ class BtcRegimeFilter:
             return False
         return (now - self._cached_time).total_seconds() < self.cache_ttl_seconds
 
+    async def initialize(self) -> str:
+        """Query historical daily BTC/USDT data on startup and replay the state machine over past 100 candles."""
+        closes = await self.fetch_btc_daily_closes()
+        if closes:
+            self.replay_state_machine(closes, window=100)
+        return self._current_regime or "UPTREND"
+
+    def replay_state_machine(
+        self,
+        daily_closes: Sequence[Decimal | float | str],
+        window: int = 100,
+    ) -> str:
+        """Replay the hysteresis state machine over historical completed daily candles.
+
+        Calculates the 50-day SMA at each step and applies the 2% hysteresis buffer
+        to accurately determine the regime state without guessing based purely on
+        the most recent candle.
+        """
+        if not daily_closes:
+            return self._current_regime or "UPTREND"
+
+        decimal_closes = [Decimal(str(p)) for p in daily_closes]
+        n = len(decimal_closes)
+        start_idx = max(0, n - max(1, window))
+
+        for i in range(start_idx, n):
+            sample_start = max(0, i - self.sma_period + 1)
+            sample = decimal_closes[sample_start : i + 1]
+            sma_50 = sum(sample) / Decimal(str(len(sample)))
+            price = decimal_closes[i]
+
+            upper_threshold = sma_50 * (Decimal("1") + self.hysteresis_pct)
+            lower_threshold = sma_50 * (Decimal("1") - self.hysteresis_pct)
+
+            if self._current_regime is None:
+                if price >= sma_50:
+                    self._current_regime = "UPTREND"
+                else:
+                    self._current_regime = "DOWNTREND"
+            elif self._current_regime == "UPTREND":
+                if price <= lower_threshold:
+                    self._current_regime = "DOWNTREND"
+            elif self._current_regime == "DOWNTREND":
+                if price >= upper_threshold:
+                    self._current_regime = "UPTREND"
+
+        return self._current_regime or "UPTREND"
+
     async def fetch_btc_daily_closes(self) -> list[Decimal]:
         """Fetch completed daily close prices for BTC/USDT."""
         now = datetime.now(timezone.utc)
@@ -75,6 +123,7 @@ class BtcRegimeFilter:
 
         closes: list[Decimal] = []
         now_ms = int(now.timestamp() * 1000)
+        fetch_limit = max(150, 100 + self.sma_period + 5)
 
         # 1. Custom candles provider
         if self.candles_provider is not None:
@@ -95,7 +144,7 @@ class BtcRegimeFilter:
             try:
                 if hasattr(self.exchange_client, "fetch_candles"):
                     candles = await self.exchange_client.fetch_candles(
-                        self.symbol, interval="1d", limit=self.sma_period + 5
+                        self.symbol, interval="1d", limit=fetch_limit
                     )
                     closes = [Decimal(str(c.close)) for c in candles]
             except Exception as exc:
@@ -107,7 +156,7 @@ class BtcRegimeFilter:
                 params = {
                     "symbol": self.symbol,
                     "interval": "1d",
-                    "limit": self.sma_period + 5,
+                    "limit": fetch_limit,
                 }
                 if self.http_client is not None:
                     response = await self.http_client.get(BINANCE_KLINES_URL, params=params)
@@ -128,13 +177,18 @@ class BtcRegimeFilter:
                                         continue
                                 closes.append(Decimal(str(row[4])))
                 else:
-                    logger.warning("Binance REST API returned HTTP %s for daily BTC klines", response.status_code)
+                    logger.warning(
+                        "Binance REST API returned HTTP %s for daily BTC klines",
+                        response.status_code,
+                    )
             except Exception as exc:
                 logger.warning("Failed to fetch daily BTC klines: %s", exc)
 
         if closes:
             self._cached_closes = closes
             self._cached_time = now
+            if self._current_regime is None:
+                self.replay_state_machine(closes, window=100)
 
         return list(closes)
 
@@ -158,7 +212,7 @@ class BtcRegimeFilter:
 
         decimal_closes = [Decimal(str(p)) for p in daily_closes]
         sample = (
-            decimal_closes[-self.sma_period:]
+            decimal_closes[-self.sma_period :]
             if len(decimal_closes) >= self.sma_period
             else decimal_closes
         )
@@ -173,6 +227,12 @@ class BtcRegimeFilter:
         lower_threshold = sma_50 * (Decimal("1") - self.hysteresis_pct)
 
         if self._current_regime is None:
+            if current_price is not None:
+                self.replay_state_machine(decimal_closes, window=100)
+            elif len(decimal_closes) > 1:
+                self.replay_state_machine(decimal_closes[:-1], window=100)
+
+        if self._current_regime is None:
             if ref_price >= sma_50:
                 self._current_regime = "UPTREND"
             else:
@@ -185,7 +245,7 @@ class BtcRegimeFilter:
                 if ref_price >= upper_threshold:
                     self._current_regime = "UPTREND"
 
-        is_uptrend = (self._current_regime == "UPTREND")
+        is_uptrend = self._current_regime == "UPTREND"
         return is_uptrend, ref_price, sma_50
 
     async def is_uptrend(

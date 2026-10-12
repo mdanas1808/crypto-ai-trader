@@ -9,13 +9,15 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Literal
 
-from app.backtest.models import BacktestConfig, Fill, Position, Trade
+from app.backtest.models import BacktestConfig, Position, Trade
 from app.backtest.portfolio import Portfolio, get_asset_category
-from app.market.constants import EXCHANGE, FIXED_SYMBOLS, SUPPORTED_SYMBOLS
+from app.market.constants import EXCHANGE, SUPPORTED_SYMBOLS
 from app.market.models import Candle, CandleOpenObservation
 from app.strategy.breakout import BreakoutSignal
 
 _ONE_HOUR = timedelta(hours=1)
+CORE_SLIPPAGE = Decimal("0.0005")  # 0.05%
+SATELLITE_SLIPPAGE = Decimal("0.0020")  # 0.20%
 
 
 class PaperExecutor:
@@ -36,13 +38,20 @@ class PaperExecutor:
         """Determine asset category ('core' if symbol in FIXED_SYMBOLS else 'satellite')."""
         return get_asset_category(symbol)
 
-    def calculate_dollar_risk(
-        self, symbol: str, equity: Decimal | None = None
-    ) -> Decimal:
+    @classmethod
+    def get_slippage(cls, symbol: str) -> Decimal:
+        """Determine tiered slippage rate based on asset category:
+        - Core coins (BTC, ETH, SOL, BNB, ZEC): 0.05% slippage.
+        - Dynamic Satellite coins: 0.20% slippage.
+        """
+        category = cls.get_asset_category(symbol)
+        if category == "core":
+            return CORE_SLIPPAGE
+        return SATELLITE_SLIPPAGE
+
+    def calculate_dollar_risk(self, symbol: str, equity: Decimal | None = None) -> Decimal:
         """Calculate dollar risk for a symbol using category-specific sizing."""
-        current_equity = (
-            equity if equity is not None else self.portfolio.equity(self._marks)
-        )
+        current_equity = equity if equity is not None else self.portfolio.equity(self._marks)
         return self.portfolio.calculate_dollar_risk(symbol, current_equity)
 
     @property
@@ -99,7 +108,10 @@ class PaperExecutor:
         if signal.symbol in self.portfolio.positions or signal.symbol in self._pending:
             return False
         previously_observed = self._last_open_observation.get(signal.symbol)
-        if previously_observed is not None and previously_observed >= signal.decision_time.astimezone(timezone.utc):
+        if (
+            previously_observed is not None
+            and previously_observed >= signal.decision_time.astimezone(timezone.utc)
+        ):
             return False
         self._pending[signal.symbol] = signal
         return True
@@ -132,6 +144,7 @@ class PaperExecutor:
             next_open=observation.open,
             marks=self._marks,
             observed_at=observation.observed_at,
+            slippage=self.get_slippage(symbol),
         )
         self._pending.pop(symbol, None)
         return position
@@ -157,7 +170,10 @@ class PaperExecutor:
         # A closed candle with no preceding open observation cannot satisfy a
         # pending entry retroactively. Expire its intent before evaluating exits.
         pending = self._pending.get(symbol)
-        if pending is not None and pending.decision_time.astimezone(timezone.utc) <= candle.open_time:
+        if (
+            pending is not None
+            and pending.decision_time.astimezone(timezone.utc) <= candle.open_time
+        ):
             self._pending.pop(symbol, None)
 
         trade = None
@@ -170,6 +186,7 @@ class PaperExecutor:
                     timestamp=decision_time,
                     reference_price=reference,
                     reason=reason,
+                    slippage=self.get_slippage(symbol),
                 )
 
         self._marks[symbol] = candle.close
@@ -200,6 +217,7 @@ class PaperExecutor:
             timestamp=now,
             reference_price=ref,
             reason=reason,
+            slippage=self.get_slippage(symbol),
         )
         return trade
 
@@ -233,14 +251,15 @@ class PaperExecutor:
                 timestamp=now,
                 reference_price=ref,
                 reason=reason,
+                slippage=self.get_slippage(symbol),
             )
         return self.portfolio.exit(
             symbol,
             timestamp=now,
             reference_price=ref,
             reason=reason,
+            slippage=self.get_slippage(symbol),
         )
-
 
 
 def _exit_condition(position: Position, candle: Candle) -> tuple[str | None, Decimal]:
@@ -260,7 +279,9 @@ def _exit_condition(position: Position, candle: Candle) -> tuple[str | None, Dec
 
 
 def _aware_utc(value: object) -> bool:
-    return isinstance(value, datetime) and value.tzinfo is not None and value.utcoffset() is not None
+    return (
+        isinstance(value, datetime) and value.tzinfo is not None and value.utcoffset() is not None
+    )
 
 
 def _positive_decimal_from_indicator(value: object) -> Decimal | None:

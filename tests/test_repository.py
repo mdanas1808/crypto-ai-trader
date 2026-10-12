@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pytest
@@ -7,9 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database.models import CandleRecord
+from app.market.ingestion import ingest_candles
 from app.market.models import Candle
 from app.market.repository import get_candles, get_candles_in_range, persist_candles
-from app.market.ingestion import ingest_candles
 
 
 def make_candle(open_time: datetime, close: str) -> Candle:
@@ -101,16 +101,12 @@ def test_range_retrieval_rejects_reversed_bounds(db_session: Session) -> None:
     end = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
     with pytest.raises(ValueError, match="start_time must be less than or equal to end_time"):
-        get_candles_in_range(
-            db_session, "BTCUSDT", "1h", start_time=start, end_time=end
-        )
+        get_candles_in_range(db_session, "BTCUSDT", "1h", start_time=start, end_time=end)
 
 
 def test_range_retrieval_requires_timezone_aware_bounds(db_session: Session) -> None:
     with pytest.raises(ValueError, match="start_time must be timezone-aware"):
-        get_candles_in_range(
-            db_session, "BTCUSDT", "1h", start_time=datetime(2024, 1, 1)
-        )
+        get_candles_in_range(db_session, "BTCUSDT", "1h", start_time=datetime(2024, 1, 1))
 
 
 def test_full_ingestion_is_idempotent(db_session: Session) -> None:

@@ -116,7 +116,9 @@ class BinanceSpotClient:
         except httpx.TimeoutException as exc:
             raise ExchangeTransportError("Binance market-data request timed out") from exc
         except httpx.RequestError as exc:
-            raise ExchangeTransportError("could not connect to Binance market-data endpoint") from exc
+            raise ExchangeTransportError(
+                "could not connect to Binance market-data endpoint"
+            ) from exc
 
         try:
             response.raise_for_status()
@@ -142,7 +144,11 @@ class BinanceSpotClient:
             raise ValueError(f"unsupported symbol: {symbol}")
         if interval not in SUPPORTED_INTERVALS:
             raise ValueError(f"unsupported interval: {interval}")
-        if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= MAX_CANDLE_LIMIT:
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= MAX_CANDLE_LIMIT
+        ):
             raise ValueError(f"limit must be between 1 and {MAX_CANDLE_LIMIT}")
 
         # Ask for one extra row so excluding Binance's still-open candle can still

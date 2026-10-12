@@ -69,9 +69,7 @@ def analyze_backtest(result: BacktestResult) -> BacktestMetrics:
     net_pnl = sum((trade.net_pnl for trade in trades), ZERO)
     gross_profit = sum((trade.net_pnl for trade in winning), ZERO)
     gross_loss = -sum((trade.net_pnl for trade in losing), ZERO)
-    fees = sum(
-        (trade.entry_fill.fee + trade.exit_fill.fee for trade in trades), ZERO
-    )
+    fees = sum((trade.entry_fill.fee + trade.exit_fill.fee for trade in trades), ZERO)
 
     average_trade = net_pnl / total_trades if total_trades else ZERO
     average_winning = gross_profit / len(winning) if winning else ZERO
@@ -98,9 +96,7 @@ def analyze_backtest(result: BacktestResult) -> BacktestMetrics:
         total_fees=fees,
         stop_loss_trades=sum(trade.exit_reason == "stop_loss" for trade in trades),
         take_profit_trades=sum(trade.exit_reason == "take_profit" for trade in trades),
-        end_of_backtest_trades=sum(
-            trade.exit_reason == "end_of_backtest" for trade in trades
-        ),
+        end_of_backtest_trades=sum(trade.exit_reason == "end_of_backtest" for trade in trades),
     )
 
 
@@ -114,7 +110,7 @@ def _validate_curve(curve: tuple[EquityPoint, ...], ending_equity: Decimal) -> D
         if not isinstance(point, EquityPoint):
             raise ValueError("equity_curve entries must be EquityPoint values")
         _validate_utc(point.timestamp, "equity point timestamp")
-        equity = _decimal(point.equity, "equity")
+        _decimal(point.equity, "equity")
         expected_event = "start" if index == 0 else "decision"
         if point.event != expected_event:
             raise ValueError("equity_curve must contain one start point followed by decisions")

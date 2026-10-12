@@ -18,7 +18,9 @@ def config(*, minimum_quantity=D("0.000001"), quantity_step=D("0.000001")):
     return BacktestConfig(minimum_quantity=minimum_quantity, quantity_step=quantity_step)
 
 
-def candle(symbol="BTCUSDT", opened=START, *, open=D("10"), high=D("10.2"), low=D("9.9"), close=D("10")):
+def candle(
+    symbol="BTCUSDT", opened=START, *, open=D("10"), high=D("10.2"), low=D("9.9"), close=D("10")
+):
     return Candle(
         exchange=EXCHANGE,
         symbol=symbol,
@@ -32,7 +34,9 @@ def candle(symbol="BTCUSDT", opened=START, *, open=D("10"), high=D("10.2"), low=
     )
 
 
-def observation(symbol="BTCUSDT", opened=START + timedelta(hours=1), *, price=D("10"), observed=None):
+def observation(
+    symbol="BTCUSDT", opened=START + timedelta(hours=1), *, price=D("10"), observed=None
+):
     return CandleOpenObservation(
         exchange=EXCHANGE,
         symbol=symbol,
@@ -182,7 +186,13 @@ def test_completed_candle_stop_wins_when_stop_and_target_are_both_touched():
 def test_completed_gap_stop_uses_bar_open_not_stop_level():
     executor, _ = enter_default()
     trade = executor.on_candle_closed(
-        candle(opened=START + timedelta(hours=1), open=D("8"), high=D("9"), low=D("7.5"), close=D("8.5"))
+        candle(
+            opened=START + timedelta(hours=1),
+            open=D("8"),
+            high=D("9"),
+            low=D("7.5"),
+            close=D("8.5"),
+        )
     )
     assert trade is not None
     assert trade.exit_reason == "stop_loss"
@@ -193,7 +203,13 @@ def test_completed_gap_stop_uses_bar_open_not_stop_level():
 def test_completed_gap_target_uses_bar_open_when_stop_is_not_touched():
     executor, _ = enter_default()
     trade = executor.on_candle_closed(
-        candle(opened=START + timedelta(hours=1), open=D("14"), high=D("15"), low=D("13.5"), close=D("14.5"))
+        candle(
+            opened=START + timedelta(hours=1),
+            open=D("14"),
+            high=D("15"),
+            low=D("13.5"),
+            close=D("14.5"),
+        )
     )
     assert trade is not None
     assert trade.exit_reason == "take_profit"
@@ -203,7 +219,11 @@ def test_completed_gap_target_uses_bar_open_when_stop_is_not_touched():
 def test_signal_at_same_time_as_exit_can_be_accepted_after_exit_is_processed():
     executor, _ = enter_default()
     exit_candle = candle(
-        opened=START + timedelta(hours=1), open=D("12"), high=D("14"), low=D("11.5"), close=D("13.5")
+        opened=START + timedelta(hours=1),
+        open=D("12"),
+        high=D("14"),
+        low=D("11.5"),
+        close=D("13.5"),
     )
     assert executor.on_candle_closed(exit_candle) is not None
     reentry = signal(opened=START + timedelta(hours=1))
@@ -222,21 +242,45 @@ def test_daily_loss_blocks_new_entry_but_does_not_prevent_existing_exit():
     assert executor.on_open_observation(observation("ETHUSDT")) is not None
 
     btc_trade = executor.on_candle_closed(
-        candle("BTCUSDT", START + timedelta(hours=1), open=D("1"), high=D("2"), low=D("0.5"), close=D("1"))
+        candle(
+            "BTCUSDT",
+            START + timedelta(hours=1),
+            open=D("1"),
+            high=D("2"),
+            low=D("0.5"),
+            close=D("1"),
+        )
     )
     assert btc_trade is not None
     assert executor.daily_loss_breached
     assert "ETHUSDT" in executor.positions
 
     executor.on_candle_closed(
-        candle("ETHUSDT", START + timedelta(hours=1), open=D("10"), high=D("11"), low=D("9"), close=D("10"))
+        candle(
+            "ETHUSDT",
+            START + timedelta(hours=1),
+            open=D("10"),
+            high=D("11"),
+            low=D("9"),
+            close=D("10"),
+        )
     )
     prepare_signal(executor, "SOLUSDT", START + timedelta(hours=1))
-    assert executor.on_open_observation(
-        observation("SOLUSDT", START + timedelta(hours=2), price=D("10"))
-    ) is None
+    assert (
+        executor.on_open_observation(
+            observation("SOLUSDT", START + timedelta(hours=2), price=D("10"))
+        )
+        is None
+    )
     eth_trade = executor.on_candle_closed(
-        candle("ETHUSDT", START + timedelta(hours=2), open=D("8"), high=D("9"), low=D("7"), close=D("8"))
+        candle(
+            "ETHUSDT",
+            START + timedelta(hours=2),
+            open=D("8"),
+            high=D("9"),
+            low=D("7"),
+            close=D("8"),
+        )
     )
     assert eth_trade is not None
     assert eth_trade.exit_reason == "stop_loss"
@@ -252,9 +296,11 @@ def test_multiple_symbols_share_open_risk_and_position_limits():
     ]
     # The shared 15% risk cap (max_concurrent_positions * core_risk_per_trade) rejects the third position after costs.
     assert sum(position is not None for position in positions) == 2
-    assert executor.portfolio.open_risk <= executor.portfolio.equity(executor.portfolio.positions and {
-        symbol: D("10") for symbol in executor.portfolio.positions
-    } or {}) * D("0.15")
+    assert executor.portfolio.open_risk <= executor.portfolio.equity(
+        executor.portfolio.positions
+        and {symbol: D("10") for symbol in executor.portfolio.positions}
+        or {}
+    ) * D("0.15")
     assert len(executor.positions) <= 3
 
 
@@ -332,7 +378,14 @@ def test_satellite_daily_loss_blocks_satellite_but_allows_core():
 
     # Trigger >4% loss on TAOUSDT (satellite basket)
     tao_trade = executor.on_candle_closed(
-        candle("TAOUSDT", START + timedelta(hours=1), open=D("1"), high=D("2"), low=D("0.5"), close=D("1"))
+        candle(
+            "TAOUSDT",
+            START + timedelta(hours=1),
+            open=D("1"),
+            high=D("2"),
+            low=D("0.5"),
+            close=D("1"),
+        )
     )
     assert tao_trade is not None
     assert executor.satellite_daily_loss_breached is True
@@ -340,13 +393,67 @@ def test_satellite_daily_loss_blocks_satellite_but_allows_core():
 
     # New satellite entry is blocked
     prepare_signal(executor, "FETUSDT", START + timedelta(hours=1))
-    assert executor.on_open_observation(
-        observation("FETUSDT", START + timedelta(hours=2), price=D("10"))
-    ) is None
+    assert (
+        executor.on_open_observation(
+            observation("FETUSDT", START + timedelta(hours=2), price=D("10"))
+        )
+        is None
+    )
 
     # Core entry is still allowed
     prepare_signal(executor, "BTCUSDT", START + timedelta(hours=1))
-    assert executor.on_open_observation(
-        observation("BTCUSDT", START + timedelta(hours=2), price=D("10"))
-    ) is not None
+    assert (
+        executor.on_open_observation(
+            observation("BTCUSDT", START + timedelta(hours=2), price=D("10"))
+        )
+        is not None
+    )
 
+
+def test_tiered_slippage_core_vs_satellite():
+    # 1. Verify get_slippage returns 0.05% for core coins and 0.20% for satellites
+    for core_sym in ("BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ZECUSDT"):
+        assert PaperExecutor.get_slippage(core_sym) == D("0.0005")
+
+    for sat_sym in ("TAOUSDT", "FETUSDT", "RENDERUSDT", "NEARUSDT", "INJUSDT"):
+        assert PaperExecutor.get_slippage(sat_sym) == D("0.0020")
+
+    # 2. Verify Core Coin fill price (BTCUSDT: 0.05% slippage on entry and exit, 0.1% fee)
+    exec_core = PaperExecutor(config())
+    prepare_signal(exec_core, "BTCUSDT")
+    pos_core = exec_core.on_open_observation(observation("BTCUSDT", price=D("10")))
+    assert pos_core is not None
+    # Entry price: 10 * (1 + 0.0005) = 10.005
+    assert pos_core.entry_fill.price == D("10.0050")
+    # Fee: 10.005 * quantity * 0.001
+    assert pos_core.entry_fill.fee == pos_core.entry_fill.price * pos_core.quantity * D("0.001")
+
+    # Exit core via take-profit
+    trade_core = exec_core.on_candle_closed(
+        candle("BTCUSDT", START + timedelta(hours=1), high=D("15"), low=D("9"), close=D("14"))
+    )
+    assert trade_core is not None
+    assert trade_core.exit_reason == "take_profit"
+    # Exit price: target_price * (1 - 0.0005)
+    assert trade_core.exit_fill.price == pos_core.target_price * D("0.9995")
+    assert trade_core.exit_fill.fee == trade_core.exit_fill.price * trade_core.quantity * D("0.001")
+
+    # 3. Verify Dynamic Satellite Coin fill price (TAOUSDT: 0.20% slippage on entry and exit, 0.1% fee)
+    exec_sat = PaperExecutor(config())
+    prepare_signal(exec_sat, "TAOUSDT")
+    pos_sat = exec_sat.on_open_observation(observation("TAOUSDT", price=D("10")))
+    assert pos_sat is not None
+    # Entry price: 10 * (1 + 0.0020) = 10.02
+    assert pos_sat.entry_fill.price == D("10.0200")
+    # Fee remains flat 0.1%: 10.02 * quantity * 0.001
+    assert pos_sat.entry_fill.fee == pos_sat.entry_fill.price * pos_sat.quantity * D("0.001")
+
+    # Exit satellite via take-profit
+    trade_sat = exec_sat.on_candle_closed(
+        candle("TAOUSDT", START + timedelta(hours=1), high=D("15"), low=D("9"), close=D("14"))
+    )
+    assert trade_sat is not None
+    assert trade_sat.exit_reason == "take_profit"
+    # Exit price: target_price * (1 - 0.0020) = target_price * 0.9980
+    assert trade_sat.exit_fill.price == pos_sat.target_price * D("0.9980")
+    assert trade_sat.exit_fill.fee == trade_sat.exit_fill.price * trade_sat.quantity * D("0.001")

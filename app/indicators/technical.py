@@ -20,7 +20,6 @@ of sorting or repairing input.
 """
 
 from collections.abc import Iterable
-from decimal import Decimal
 from typing import Final
 
 import numpy as np
@@ -102,9 +101,7 @@ def _wilder_average(values: np.ndarray, period: int) -> np.ndarray:
 
     result[seed_index] = np.mean(values[first : seed_index + 1])
     for index in range(seed_index + 1, len(values)):
-        result[index] = (
-            (period - 1) * result[index - 1] + values[index]
-        ) / period
+        result[index] = ((period - 1) * result[index - 1] + values[index]) / period
     return result
 
 
@@ -173,9 +170,7 @@ def calculate_indicators(candles: Iterable[Candle]) -> pd.DataFrame:
 
     validate_candle_sequence(candle_rows)
 
-    numeric_values = {
-        column: _numeric_values(candle_rows, column) for column in _DECIMAL_COLUMNS
-    }
+    numeric_values = {column: _numeric_values(candle_rows, column) for column in _DECIMAL_COLUMNS}
     high = numeric_values["high"]
     low = numeric_values["low"]
     close = numeric_values["close"]
@@ -214,9 +209,7 @@ def calculate_indicators(candles: Iterable[Candle]) -> pd.DataFrame:
     frame["bb_upper_20"] = bb_middle + bb_width
     frame["bb_lower_20"] = bb_middle - bb_width
 
-    frame["volume_sma_20"] = pd.Series(volume, dtype=np.float64).rolling(
-        20, min_periods=20
-    ).mean()
+    frame["volume_sma_20"] = pd.Series(volume, dtype=np.float64).rolling(20, min_periods=20).mean()
     frame["price_change_pct"] = close_series.pct_change(fill_method=None) * 100.0
 
     return frame.loc[:, columns]

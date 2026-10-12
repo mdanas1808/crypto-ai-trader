@@ -9,16 +9,13 @@ or missed a profitable breakout.
 
 from __future__ import annotations
 
-import asyncio
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
 import json
 import logging
 import os
 import sqlite3
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any, Awaitable, Callable
-
-import httpx
 
 from app.market.exchange import BinanceSpotClient
 
@@ -73,6 +70,12 @@ class FundamentalEvalLogger:
                     return_1h REAL,
                     return_4h REAL,
                     return_24h REAL,
+                    net_return_1h REAL,
+                    net_return_4h REAL,
+                    net_return_24h REAL,
+                    is_fallback INTEGER DEFAULT 0,
+                    regime_state TEXT DEFAULT '',
+                    regime_blocked INTEGER DEFAULT 0,
                     outcome_status TEXT DEFAULT 'PENDING'
                 );
                 """
@@ -80,6 +83,12 @@ class FundamentalEvalLogger:
             for col, col_def in (
                 ("mode", "TEXT DEFAULT 'ENTRY'"),
                 ("hypothetical_fill_price", "REAL"),
+                ("is_fallback", "INTEGER DEFAULT 0"),
+                ("regime_state", "TEXT DEFAULT ''"),
+                ("regime_blocked", "INTEGER DEFAULT 0"),
+                ("net_return_1h", "REAL"),
+                ("net_return_4h", "REAL"),
+                ("net_return_24h", "REAL"),
             ):
                 try:
                     conn.execute(f"ALTER TABLE fundamental_evaluations ADD COLUMN {col} {col_def}")
@@ -108,15 +117,49 @@ class FundamentalEvalLogger:
         mode: str = "ENTRY",
         metadata: dict[str, Any] | None = None,
         timestamp: datetime | None = None,
+        is_fallback: bool = False,
+        regime_state: str = "",
+        regime_blocked: int | bool = 0,
     ) -> int:
-        """Log any fundamental evaluation decision (APPROVE, REJECT, HOLD, REDUCE, EXIT, no-news) to SQLite and log file."""
+        """Log any fundamental evaluation decision (APPROVE, REJECT, FALLBACK_REJECT, HOLD, REDUCE, EXIT) to SQLite and log file."""
         ts = timestamp if timestamp is not None else datetime.now(timezone.utc)
         ts_iso = ts.isoformat()
         price_val = float(current_price)
         meta = metadata or {}
         driving_id = str(meta.get("driving_news_id") or "")
         meta_json = json.dumps(meta)
+
+        r_state = (
+            str(regime_state or meta.get("regime_state") or meta.get("regime") or "")
+            .strip()
+            .upper()
+        )
+        r_blocked = 1 if (bool(regime_blocked) or bool(meta.get("regime_blocked", False))) else 0
+
         verdict_upper = str(verdict).strip().upper()
+        # NEVER store BLOCKED_BY_REGIME in verdict - keep verdict strictly as gate verdict
+        if verdict_upper == "BLOCKED_BY_REGIME":
+            verdict_upper = str(meta.get("gate_verdict") or "APPROVE").strip().upper()
+            if verdict_upper == "BLOCKED_BY_REGIME":
+                verdict_upper = "APPROVE"
+            r_blocked = 1
+            if not r_state:
+                r_state = "DOWNTREND"
+
+        fb_flag = (
+            1
+            if (
+                is_fallback
+                or bool(meta.get("is_fallback", False))
+                or verdict_upper == "FALLBACK_REJECT"
+                or "fallback" in reason.lower()
+            )
+            else 0
+        )
+
+        if fb_flag == 1 and verdict_upper == "REJECT":
+            verdict_upper = "FALLBACK_REJECT"
+
         mode_upper = str(mode).strip().upper()
 
         with self._get_connection() as conn:
@@ -126,8 +169,9 @@ class FundamentalEvalLogger:
                 INSERT INTO fundamental_evaluations (
                     timestamp, symbol, current_price, raw_inputs,
                     verdict, risk_level, confidence, reason,
-                    driving_news_id, metadata_json, mode, outcome_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    driving_news_id, metadata_json, mode, outcome_status,
+                    is_fallback, regime_state, regime_blocked
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     ts_iso,
@@ -142,6 +186,9 @@ class FundamentalEvalLogger:
                     meta_json,
                     mode_upper,
                     "PENDING",
+                    fb_flag,
+                    r_state,
+                    r_blocked,
                 ),
             )
             eval_id = cur.lastrowid
@@ -149,8 +196,8 @@ class FundamentalEvalLogger:
 
         log_line = (
             f"[{ts_iso}] {mode_upper}_EVAL | id={eval_id} | symbol={symbol} | price={price_val:.4f} | "
-            f"verdict={verdict_upper} | risk={risk_level} (conf={confidence:.2f}) | "
-            f"reason={reason!r} | driving_news_id={driving_id!r}"
+            f"verdict={verdict_upper} (is_fallback={fb_flag}, regime={r_state}, blocked={r_blocked}) | "
+            f"risk={risk_level} (conf={confidence:.2f}) | reason={reason!r} | driving_news_id={driving_id!r}"
         )
         self._append_to_log_file(log_line)
         logger.info(log_line)
@@ -168,6 +215,9 @@ class FundamentalEvalLogger:
         reason: str,
         metadata: dict[str, Any] | None = None,
         timestamp: datetime | None = None,
+        is_fallback: bool = False,
+        regime_state: str = "",
+        regime_blocked: int | bool = 0,
     ) -> int:
         """Log an ENTRY signal evaluation (backward-compatible wrapper around log_decision)."""
         return self.log_decision(
@@ -181,6 +231,42 @@ class FundamentalEvalLogger:
             mode="ENTRY",
             metadata=metadata,
             timestamp=timestamp,
+            is_fallback=is_fallback,
+            regime_state=regime_state,
+            regime_blocked=regime_blocked,
+        )
+
+    def log_regime_blocked_signal(
+        self,
+        symbol: str,
+        current_price: Decimal | float,
+        reason: str = "Blocked by BTC downtrend regime (BTC below 50-day SMA)",
+        raw_inputs: str = "BTC downtrend regime (BTC below 50-day SMA)",
+        metadata: dict[str, Any] | None = None,
+        timestamp: datetime | None = None,
+        verdict: str = "APPROVE",
+        regime_state: str = "DOWNTREND",
+    ) -> int:
+        """Log an ENTRY signal blocked by the regime filter with regime_blocked=1 and regime_state='DOWNTREND'."""
+        meta = dict(metadata or {})
+        gate_verdict = str(meta.get("gate_verdict") or verdict or "APPROVE").strip().upper()
+        if gate_verdict == "BLOCKED_BY_REGIME":
+            gate_verdict = "APPROVE"
+        meta["regime_state"] = regime_state
+        meta["regime_blocked"] = 1
+        return self.log_decision(
+            symbol=symbol,
+            current_price=current_price,
+            raw_inputs=raw_inputs,
+            verdict=gate_verdict,
+            risk_level=str(meta.get("risk_level", "HIGH")),
+            confidence=float(meta.get("confidence", 1.0)),
+            reason=reason,
+            mode="ENTRY",
+            metadata=meta,
+            timestamp=timestamp,
+            regime_state=regime_state,
+            regime_blocked=1,
         )
 
     def update_outcome(
@@ -193,6 +279,9 @@ class FundamentalEvalLogger:
         return_1h: float | None = None,
         return_4h: float | None = None,
         return_24h: float | None = None,
+        net_return_1h: float | None = None,
+        net_return_4h: float | None = None,
+        net_return_24h: float | None = None,
         outcome_status: str = "COMPLETED",
     ) -> None:
         """Update evaluation record with calculated hypothetical outcomes."""
@@ -207,6 +296,9 @@ class FundamentalEvalLogger:
                     return_1h = COALESCE(?, return_1h),
                     return_4h = COALESCE(?, return_4h),
                     return_24h = COALESCE(?, return_24h),
+                    net_return_1h = COALESCE(?, net_return_1h),
+                    net_return_4h = COALESCE(?, net_return_4h),
+                    net_return_24h = COALESCE(?, net_return_24h),
                     outcome_status = ?
                 WHERE id = ?
                 """,
@@ -218,6 +310,9 @@ class FundamentalEvalLogger:
                     return_1h,
                     return_4h,
                     return_24h,
+                    net_return_1h,
+                    net_return_4h,
+                    net_return_24h,
                     outcome_status,
                     eval_id,
                 ),
@@ -251,7 +346,9 @@ class FundamentalEvalLogger:
                 if res is not None:
                     return float(res)
             except Exception as exc:
-                logger.warning("Custom price fetcher failed for %s at %s: %s", symbol, target_time, exc)
+                logger.warning(
+                    "Custom price fetcher failed for %s at %s: %s", symbol, target_time, exc
+                )
 
         # Fallback to Binance Spot candles
         if self.binance_client is not None:
@@ -267,7 +364,12 @@ class FundamentalEvalLogger:
                 if closest_candle is not None and min_diff <= 7200:  # within 2 hours
                     return float(closest_candle.close)
             except Exception as exc:
-                logger.warning("Binance client failed to fetch candle for %s at %s: %s", symbol, target_time, exc)
+                logger.warning(
+                    "Binance client failed to fetch candle for %s at %s: %s",
+                    symbol,
+                    target_time,
+                    exc,
+                )
 
         return None
 
@@ -289,7 +391,6 @@ class FundamentalEvalLogger:
         prices: dict[int, float | None] = {}
         returns: dict[int, float | None] = {}
 
-        now = datetime.now(timezone.utc)
         if eval_time.tzinfo is None:
             eval_time = eval_time.replace(tzinfo=timezone.utc)
 
@@ -310,12 +411,32 @@ class FundamentalEvalLogger:
         r_24h = returns.get(24)
 
         # Determine outcome assessment
+        verdict = "REJECT"
+        try:
+            with self._get_connection() as conn:
+                row = conn.execute(
+                    "SELECT verdict FROM fundamental_evaluations WHERE id = ?", (eval_id,)
+                ).fetchone()
+                if row and row["verdict"]:
+                    verdict = str(row["verdict"]).upper()
+        except Exception:
+            pass
+
         primary_return = r_24h if r_24h is not None else (r_4h if r_4h is not None else r_1h)
         if primary_return is not None:
-            if primary_return < 0:
-                ai_verdict_assessment = f"AI successfully dodged a bullet (loss avoided: {primary_return:+.2%})"
+            if verdict == "BLOCKED_BY_REGIME":
+                if primary_return < 0:
+                    ai_verdict_assessment = f"Regime filter successfully blocked a losing trade (loss avoided: {primary_return:+.2%})"
+                else:
+                    ai_verdict_assessment = f"Regime filter missed a profitable trade (missed return: {primary_return:+.2%})"
+            elif primary_return < 0:
+                ai_verdict_assessment = (
+                    f"AI successfully dodged a bullet (loss avoided: {primary_return:+.2%})"
+                )
             else:
-                ai_verdict_assessment = f"AI missed a profitable trade (missed return: {primary_return:+.2%})"
+                ai_verdict_assessment = (
+                    f"AI missed a profitable trade (missed return: {primary_return:+.2%})"
+                )
         else:
             ai_verdict_assessment = "Price data incomplete"
 

@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock
+
 import httpx
 import pytest
 
@@ -41,21 +42,23 @@ async def test_fetch_recent_news_success_formats_xml_blocks():
         ]
     }
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        return_value=httpx.Response(status_code=200, json=payload)
-    )
+    mock_client.get = AsyncMock(return_value=httpx.Response(status_code=200, json=payload))
 
-    result = await fetch_recent_news(
-        "FETUSDT", limit=2, async_client=mock_client, now=fixed_now
-    )
+    result = await fetch_recent_news("FETUSDT", limit=2, async_client=mock_client, now=fixed_now)
 
     assert mock_client.get.await_count == 1
     called_url = mock_client.get.call_args.args[0]
     assert called_url == f"{CRYPTOCOMPARE_NEWS_BASE_URL}?categories=FET&lang=EN"
     assert "<news_data>" in result
     assert "</news_data>" in result
-    assert "[2h ago | CoinDesk] Fetch.ai Announces ASI Alliance Upgrade :: Decentralized AI network completes major token merger milestone." in result
-    assert "[4h ago | Cointelegraph] Institutional AI Demand Rises :: Compute cluster utilization hits new quarterly record." in result
+    assert (
+        "[2h ago | CoinDesk] Fetch.ai Announces ASI Alliance Upgrade :: Decentralized AI network completes major token merger milestone."
+        in result
+    )
+    assert (
+        "[4h ago | Cointelegraph] Institutional AI Demand Rises :: Compute cluster utilization hits new quarterly record."
+        in result
+    )
     assert "Third Headline Ignored" not in result
 
 
@@ -75,9 +78,7 @@ async def test_fetch_recent_news_items_truncates_summary_to_300_chars():
         ]
     }
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        return_value=httpx.Response(status_code=200, json=payload)
-    )
+    mock_client.get = AsyncMock(return_value=httpx.Response(status_code=200, json=payload))
 
     items = await fetch_recent_news_items(
         "TAOUSDT", limit=1, async_client=mock_client, now=fixed_now
@@ -93,9 +94,7 @@ async def test_fetch_recent_news_items_truncates_summary_to_300_chars():
 @pytest.mark.asyncio
 async def test_fetch_recent_news_raises_on_network_failure():
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        side_effect=httpx.ConnectError("DNS lookup failed")
-    )
+    mock_client.get = AsyncMock(side_effect=httpx.ConnectError("DNS lookup failed"))
 
     with pytest.raises(NewsFetchError):
         await fetch_recent_news("TAOUSDT", async_client=mock_client)
@@ -104,9 +103,7 @@ async def test_fetch_recent_news_raises_on_network_failure():
 @pytest.mark.asyncio
 async def test_fetch_recent_news_raises_on_timeout():
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        side_effect=httpx.TimeoutException("Request timed out after 3.0s")
-    )
+    mock_client.get = AsyncMock(side_effect=httpx.TimeoutException("Request timed out after 3.0s"))
 
     with pytest.raises(NewsFetchError):
         await fetch_recent_news("RENDERUSDT", async_client=mock_client)
@@ -126,9 +123,7 @@ async def test_fetch_recent_news_raises_on_non_200_status():
 @pytest.mark.asyncio
 async def test_fetch_recent_news_fallback_on_empty_payload():
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        return_value=httpx.Response(status_code=200, json={"Data": []})
-    )
+    mock_client.get = AsyncMock(return_value=httpx.Response(status_code=200, json={"Data": []}))
 
     result = await fetch_recent_news("INJUSDT", async_client=mock_client)
     assert result == "<news_data></news_data>"
@@ -174,9 +169,7 @@ async def test_fetch_recent_news_filters_unmatched_categories_and_tags():
         ]
     }
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        return_value=httpx.Response(status_code=200, json=payload)
-    )
+    mock_client.get = AsyncMock(return_value=httpx.Response(status_code=200, json=payload))
 
     # Fetch news for SOLUSDT: ETH article should be filtered out, SOL kept
     sol_items = await fetch_recent_news_items(
@@ -216,9 +209,7 @@ async def test_fetch_recent_news_discards_substring_headlines():
         ]
     }
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        return_value=httpx.Response(status_code=200, json=payload)
-    )
+    mock_client.get = AsyncMock(return_value=httpx.Response(status_code=200, json=payload))
 
     items = await fetch_recent_news_items(
         "SOLUSDT", limit=10, async_client=mock_client, now=fixed_now
@@ -256,9 +247,7 @@ async def test_fetch_recent_news_matches_cashtags_and_pairs_without_canonical_ta
         ]
     }
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        return_value=httpx.Response(status_code=200, json=payload)
-    )
+    mock_client.get = AsyncMock(return_value=httpx.Response(status_code=200, json=payload))
 
     items = await fetch_recent_news_items(
         "SOLUSDT", limit=10, async_client=mock_client, now=fixed_now
@@ -290,9 +279,7 @@ async def test_fetch_recent_news_logs_discarded_articles(caplog):
         ]
     }
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        return_value=httpx.Response(status_code=200, json=payload)
-    )
+    mock_client.get = AsyncMock(return_value=httpx.Response(status_code=200, json=payload))
 
     import logging
 
@@ -335,9 +322,7 @@ async def test_strict_ticker_matching_ambiguous_assets(caplog):
         ]
     }
     mock_client = AsyncMock()
-    mock_client.get = AsyncMock(
-        return_value=httpx.Response(status_code=200, json=payload)
-    )
+    mock_client.get = AsyncMock(return_value=httpx.Response(status_code=200, json=payload))
 
     import logging
 
@@ -350,5 +335,6 @@ async def test_strict_ticker_matching_ambiguous_assets(caplog):
         assert "$NEAR Surges 15% on Ecosystem Grant Expansion" in headlines
         assert "Near Protocol Announces New Sharding Phase" in headlines
         assert "NEAR Breaks Resistance Above $7.50" in headlines
-        assert "Discarded article: Bitcoin is near all-time high as ETF inflows surge" in caplog.text
-
+        assert (
+            "Discarded article: Bitcoin is near all-time high as ETF inflows surge" in caplog.text
+        )

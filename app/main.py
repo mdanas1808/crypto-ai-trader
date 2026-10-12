@@ -8,14 +8,13 @@ the PaperSession orchestrator in an asyncio event loop.
 from __future__ import annotations
 
 import asyncio
-from decimal import Decimal
 import logging
-import signal
+from decimal import Decimal
 from typing import Any
 
-from fastapi import FastAPI
 import httpx
 import uvicorn
+from fastapi import FastAPI
 
 from app.analysis.explainer import TradeExplainer
 from app.api.dashboard import create_dashboard_router, set_dashboard_session

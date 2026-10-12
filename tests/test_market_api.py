@@ -9,9 +9,7 @@ from app.market.models import Candle
 from app.market.repository import persist_candles
 
 
-def test_market_api_reads_database_chronologically(
-    db_session: Session, monkeypatch
-) -> None:
+def test_market_api_reads_database_chronologically(db_session: Session, monkeypatch) -> None:
     def fail_if_exchange_is_called(*args, **kwargs):
         raise AssertionError("market API must not call the exchange client")
 

@@ -1,8 +1,8 @@
 """Validation for chronological, gap-free candle sequences."""
 
+import re
 from collections.abc import Iterable
 from datetime import datetime, timedelta, timezone
-import re
 
 from app.market.models import Candle
 
@@ -63,9 +63,7 @@ class CandleSequenceValidationError(ValueError):
             )
         else:
             detail = reason
-        super().__init__(
-            f"invalid candle sequence for {exchange} {symbol} {interval}: {detail}"
-        )
+        super().__init__(f"invalid candle sequence for {exchange} {symbol} {interval}: {detail}")
 
 
 def _aligned_timestamp(timestamp: datetime, duration: timedelta) -> datetime:
@@ -125,10 +123,7 @@ def validate_candle_sequence(candles: Iterable[Candle]) -> None:
             elapsed = candle.open_time - previous.open_time
             if elapsed != duration:
                 steps = elapsed // duration
-                missing = tuple(
-                    previous.open_time + duration * index
-                    for index in range(1, steps)
-                )
+                missing = tuple(previous.open_time + duration * index for index in range(1, steps))
                 raise CandleSequenceValidationError(
                     reason="gap",
                     exchange=exchange,

@@ -1,7 +1,7 @@
 """Causal walk-forward and deterministic offline execution orchestration."""
 
 from collections.abc import Iterator, Mapping
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from decimal import Decimal
 
 import pandas as pd
@@ -27,7 +27,11 @@ def iter_walk_forward(indicator_frame: pd.DataFrame) -> Iterator[pd.DataFrame]:
         raise ValueError("indicator_frame must contain an open_time column")
 
     open_times = indicator_frame["open_time"]
-    if open_times.isna().any() or not open_times.is_monotonic_increasing or not open_times.is_unique:
+    if (
+        open_times.isna().any()
+        or not open_times.is_monotonic_increasing
+        or not open_times.is_unique
+    ):
         raise ValueError("indicator_frame must be strictly chronological by open_time")
 
     for stop in range(1, len(indicator_frame) + 1):
@@ -71,7 +75,11 @@ def run_backtest(
             raise ValueError(f"stream {key!r} is missing columns: {', '.join(sorted(missing))}")
         if not isinstance(frame.index, pd.DatetimeIndex) or str(frame.index.tz) != "UTC":
             raise ValueError(f"stream {key!r} index must be a UTC DatetimeIndex")
-        if frame.index.hasnans or not frame.index.is_monotonic_increasing or not frame.index.is_unique:
+        if (
+            frame.index.hasnans
+            or not frame.index.is_monotonic_increasing
+            or not frame.index.is_unique
+        ):
             raise ValueError(f"stream {key!r} must be strictly chronological")
         identities = set(zip(frame["exchange"], frame["symbol"]))
         if len(identities) != 1:
@@ -96,7 +104,9 @@ def run_backtest(
         for signal in signals:
             if signal.symbol != symbol or signal.exchange != exchange:
                 raise ValueError("strategy signal identity does not match its stream")
-            signals_by_time.setdefault(_utc(signal.decision_time, "decision_time"), []).append(signal)
+            signals_by_time.setdefault(_utc(signal.decision_time, "decision_time"), []).append(
+                signal
+            )
         for decision_value, row in bounded.iterrows():
             decision_time = _utc(decision_value, "decision_time")
             open_time = _utc(row["open_time"], "open_time")
@@ -133,7 +143,9 @@ def run_backtest(
                 continue
             reason, reference = _exit_condition(position, row)
             if reason is not None:
-                portfolio.exit(symbol, timestamp=timestamp, reference_price=reference, reason=reason)
+                portfolio.exit(
+                    symbol, timestamp=timestamp, reference_price=reference, reason=reason
+                )
 
         # Establish a new UTC day's baseline after prior-bar exits but before
         # any opening-gap movement at this timestamp is applied.
@@ -167,7 +179,9 @@ def run_backtest(
                 reason, reference = _opening_exit_condition(position, row)
                 if reason is not None:
                     portfolio.exit(
-                        symbol, timestamp=timestamp, reference_price=reference,
+                        symbol,
+                        timestamp=timestamp,
+                        reference_price=reference,
                         reason=reason,
                     )
             last_marks[symbol] = _decimal_price(row["open"], "open")
@@ -175,9 +189,7 @@ def run_backtest(
         portfolio.update_day(timestamp, last_marks)
         # Signal fills happen at the open of the next candle, which begins at
         # this completed candle's decision timestamp.
-        for signal in sorted(
-            signals_by_time.get(timestamp, []), key=lambda item: item.symbol
-        ):
+        for signal in sorted(signals_by_time.get(timestamp, []), key=lambda item: item.symbol):
             next_row = rows_by_open.get(signal.symbol, {}).get(timestamp)
             if next_row is None:
                 continue
@@ -241,9 +253,7 @@ def _exit_condition(position: Position, row: pd.Series) -> tuple[str | None, Dec
     return None, open_price
 
 
-def _opening_exit_condition(
-    position: Position, row: pd.Series
-) -> tuple[str | None, Decimal]:
+def _opening_exit_condition(position: Position, row: pd.Series) -> tuple[str | None, Decimal]:
     """Resolve opening exits, preserving stop-first dual-touch semantics."""
     open_price = _decimal_price(row["open"], "open")
     low = _decimal_price(row["low"], "low")

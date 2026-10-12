@@ -1,12 +1,12 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-import logging
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.analysis.explainer import TradeExplainer
-from app.backtest.data import MultiTimeframeBacktestData
 from app.backtest.models import BacktestConfig, Fill, Trade
 from app.database.database import Base
 from app.database.paper_models import PaperSignalRecord, PaperTradeRecord
@@ -17,8 +17,6 @@ from app.trading.alerts import AlertHandler, CompositeAlertHandler
 from app.trading.paper import PaperExecutor
 from app.trading.persistence import DatabaseAlertHandler
 from app.trading.session import PaperSession
-
-import pandas as pd
 
 UTC = timezone.utc
 START = datetime(2024, 1, 2, tzinfo=UTC)
@@ -115,7 +113,11 @@ def test_database_alert_handler_persists_signal(sqlite_session_factory):
         assert r.side == "long"
         # SQLite returns naive datetime for timestamps; normalize to UTC for comparison
         dt = r.decision_time if r.decision_time.tzinfo else r.decision_time.replace(tzinfo=UTC)
-        st = r.signal_open_time if r.signal_open_time.tzinfo else r.signal_open_time.replace(tzinfo=UTC)
+        st = (
+            r.signal_open_time
+            if r.signal_open_time.tzinfo
+            else r.signal_open_time.replace(tzinfo=UTC)
+        )
         assert dt == sig.decision_time
         assert st == sig.signal_open_time
         assert round(Decimal(str(r.atr_14)), 2) == round(D("2.5"), 2)
@@ -346,4 +348,3 @@ async def test_paper_session_with_multiple_handlers_list(sqlite_session_factory)
         assert trades[0].exit_reason == "take_profit"
     finally:
         db_session.close()
-

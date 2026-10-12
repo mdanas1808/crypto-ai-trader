@@ -18,7 +18,6 @@ from pydantic import BaseModel, ConfigDict
 
 from app.backtest.models import Fill, Position, Trade
 from app.strategy.breakout import BreakoutSignal
-from app.trading.paper import PaperExecutor
 
 
 class FillResponse(BaseModel):
@@ -249,9 +248,7 @@ def create_dashboard_router(
     ) -> list[PositionResponse]:
         executor = _resolve_executor(session)
         positions = getattr(executor, "positions", {})
-        pos_list = (
-            list(positions.values()) if isinstance(positions, dict) else list(positions)
-        )
+        pos_list = list(positions.values()) if isinstance(positions, dict) else list(positions)
         return [PositionResponse.from_position(p) for p in pos_list]
 
     @router.get("/trades", response_model=list[TradeResponse])
@@ -289,4 +286,3 @@ def create_dashboard_app(
 
 # Default router using the global active session dependency
 router = create_dashboard_router(None)
-

@@ -5,8 +5,8 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.database.database import Base, engine
 from app.database import models  # noqa: F401
+from app.database.database import Base, engine
 
 
 @pytest.fixture

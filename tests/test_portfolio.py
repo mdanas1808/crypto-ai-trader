@@ -1,13 +1,10 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-import pytest
-
+from app.backtest.execution import entry_fill_price, fee_for_fill, round_quantity_down
 from app.backtest.models import BacktestConfig
 from app.backtest.portfolio import Portfolio
-from app.backtest.execution import entry_fill_price, fee_for_fill, round_quantity_down
 from app.strategy.breakout import BreakoutSignal
-
 
 T0 = datetime(2024, 1, 1, tzinfo=timezone.utc)
 
@@ -23,7 +20,9 @@ def config(**kwargs):
 
 def enter(portfolio, symbol="BTCUSDT", price=Decimal("10"), when=T0, marks=None, atr=1.0):
     return portfolio.enter(
-        signal(symbol, when=when, atr=atr), timestamp=when, next_open=price,
+        signal(symbol, when=when, atr=atr),
+        timestamp=when,
+        next_open=price,
         marks=marks or {},
     )
 
@@ -38,8 +37,13 @@ def test_initial_cash_risk_budget_quantity_and_entry_costs():
     assert position.target_price == Decimal("13.0050")
     assert position.quantity == Decimal("0.333333")
     assert position.initial_risk == Decimal("0.4999995")
-    assert position.entry_fill.fee == position.entry_fill.price * position.quantity * Decimal("0.001")
-    assert portfolio.cash == Decimal("100") - position.entry_fill.price * position.quantity - position.entry_fill.fee
+    assert position.entry_fill.fee == position.entry_fill.price * position.quantity * Decimal(
+        "0.001"
+    )
+    assert (
+        portfolio.cash
+        == Decimal("100") - position.entry_fill.price * position.quantity - position.entry_fill.fee
+    )
 
 
 def test_open_risk_cap_and_three_position_limit_are_shared():

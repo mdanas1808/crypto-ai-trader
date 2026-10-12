@@ -26,9 +26,7 @@ class MultiTimeframeBacktestData:
     trading_frame: pd.DataFrame
 
 
-def candle_completion_times(
-    open_times: Iterable[datetime], interval: str
-) -> pd.DatetimeIndex:
+def candle_completion_times(open_times: Iterable[datetime], interval: str) -> pd.DatetimeIndex:
     """Return UTC completion boundaries for aware candle open timestamps."""
     duration = interval_duration(interval)
     normalized: list[datetime] = []
@@ -41,9 +39,7 @@ def candle_completion_times(
     return pd.DatetimeIndex(pd.to_datetime(normalized, utc=True))
 
 
-def align_timeframes(
-    hourly_frame: pd.DataFrame, four_hour_frame: pd.DataFrame
-) -> pd.DataFrame:
+def align_timeframes(hourly_frame: pd.DataFrame, four_hour_frame: pd.DataFrame) -> pd.DataFrame:
     """As-of align 4H candles to 1H completion times without future leakage.
 
     Inputs are expected to be the validated outputs of ``calculate_indicators``.
@@ -74,12 +70,8 @@ def align_timeframes(
     left["decision_time"] = candle_completion_times(left["open_time"], EXECUTION_INTERVAL)
     right = four_hour_frame.copy(deep=True).reset_index(drop=True)
     right["open_time"] = pd.to_datetime(right["open_time"], utc=True)
-    right["4h_completion_time"] = candle_completion_times(
-        right["open_time"], REGIME_INTERVAL
-    )
-    right = right.rename(
-        columns={column: f"4h_{column}" for column in four_hour_frame.columns}
-    )
+    right["4h_completion_time"] = candle_completion_times(right["open_time"], REGIME_INTERVAL)
+    right = right.rename(columns={column: f"4h_{column}" for column in four_hour_frame.columns})
 
     if right.empty:
         aligned = left
@@ -152,9 +144,7 @@ def prepare_multi_timeframe_backtest_data(
     )
 
 
-def _validate_indicator_frame(
-    frame: pd.DataFrame, expected_interval: str, name: str
-) -> None:
+def _validate_indicator_frame(frame: pd.DataFrame, expected_interval: str, name: str) -> None:
     if not isinstance(frame, pd.DataFrame):
         raise TypeError(f"{name} must be a pandas DataFrame")
     required = {"exchange", "symbol", "open_time", "interval", *INDICATOR_COLUMNS}
@@ -172,9 +162,7 @@ def _validate_indicator_frame(
         if times.isna().any() or not times.is_monotonic_increasing or not times.is_unique:
             raise ValueError(f"{name} must be strictly chronological by open_time")
         if any(
-            not isinstance(value, datetime)
-            or value.tzinfo is None
-            or value.utcoffset() is None
+            not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None
             for value in times
         ):
             raise ValueError(f"{name} open_time values must be timezone-aware")

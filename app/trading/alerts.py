@@ -6,9 +6,9 @@ formats and logs strategy events, and a CompositeAlertHandler for multiplexing.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
 import inspect
 import logging
+from collections.abc import Iterable
 from typing import Any, Protocol, runtime_checkable
 
 from app.backtest.models import Position, Trade
@@ -42,9 +42,7 @@ class AlertHandler(Protocol):
 class LoggingAlertHandler:
     """Default alert handler logging strategy events via standard library logging."""
 
-    def __init__(
-        self, logger: logging.Logger | None = None, level: int = logging.INFO
-    ) -> None:
+    def __init__(self, logger: logging.Logger | None = None, level: int = logging.INFO) -> None:
         self.logger = logger or logging.getLogger("app.trading.alerts")
         self.level = level
 
@@ -114,14 +112,14 @@ class CompositeAlertHandler:
                         exc_info=True,
                     )
         if coroutines:
+
             async def _await_all() -> None:
                 for coro in coroutines:
                     try:
                         await coro
                     except Exception as exc:
-                        logger.warning(
-                            "Error awaiting async alert handler: %s", exc, exc_info=True
-                        )
+                        logger.warning("Error awaiting async alert handler: %s", exc, exc_info=True)
+
             return _await_all()
         return None
 

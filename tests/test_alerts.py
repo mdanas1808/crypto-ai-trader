@@ -1,7 +1,9 @@
+import logging
 from collections.abc import AsyncIterator
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-import logging
+
+import pandas as pd
 import pytest
 
 from app.analysis.explainer import TradeExplainer
@@ -13,8 +15,6 @@ from app.strategy.breakout import BreakoutSignal
 from app.trading.alerts import AlertHandler, LoggingAlertHandler
 from app.trading.paper import PaperExecutor
 from app.trading.session import PaperSession
-
-import pandas as pd
 
 UTC = timezone.utc
 START = datetime(2024, 1, 2, tzinfo=UTC)
@@ -471,4 +471,3 @@ async def test_session_supports_async_alert_handler():
     pos = await session.process_event(obs)
     assert pos is not None
     assert len(handler.entries) == 1
-

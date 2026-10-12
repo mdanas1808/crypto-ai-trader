@@ -103,9 +103,7 @@ def test_sequence_validator_reports_gap_context(
         pytest.param((0, 0), "duplicate", id="duplicate"),
     ],
 )
-def test_sequence_validator_rejects_non_strict_order(
-    hours: tuple[int, int], reason: str
-) -> None:
+def test_sequence_validator_rejects_non_strict_order(hours: tuple[int, int], reason: str) -> None:
     with pytest.raises(CandleSequenceValidationError) as captured:
         validate_candle_sequence(candles_at("1h", hours))
     assert captured.value.reason == reason
@@ -181,6 +179,4 @@ def test_candle_open_observation_rejects_forming_ohlcv_extras() -> None:
     from app.market.models import CandleOpenObservation
 
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
-        CandleOpenObservation.model_validate(
-            {**valid_open_observation_values(), "close": "42001"}
-        )
+        CandleOpenObservation.model_validate({**valid_open_observation_values(), "close": "42001"})

@@ -1,9 +1,11 @@
 """Deterministic Decimal-based fills, fees, and quantity rounding."""
 
-from decimal import Decimal, ROUND_DOWN
+from decimal import ROUND_DOWN, Decimal
 
 ENTRY_SLIPPAGE = Decimal("0.0005")
 EXIT_SLIPPAGE = Decimal("0.0005")
+CORE_SLIPPAGE = Decimal("0.0005")
+SATELLITE_SLIPPAGE = Decimal("0.0020")
 FEE_RATE = Decimal("0.001")
 ATR_STOP_MULTIPLIER = Decimal("1.5")
 TARGET_R_MULTIPLIER = Decimal("2")
@@ -17,14 +19,16 @@ def decimal_atr(value: float) -> Decimal:
     return result
 
 
-def entry_fill_price(open_price: Decimal) -> Decimal:
+def entry_fill_price(open_price: Decimal, slippage: Decimal | None = None) -> Decimal:
     _positive_price(open_price)
-    return open_price * (Decimal("1") + ENTRY_SLIPPAGE)
+    rate = slippage if slippage is not None else ENTRY_SLIPPAGE
+    return open_price * (Decimal("1") + rate)
 
 
-def exit_fill_price(reference_price: Decimal) -> Decimal:
+def exit_fill_price(reference_price: Decimal, slippage: Decimal | None = None) -> Decimal:
     _positive_price(reference_price)
-    return reference_price * (Decimal("1") - EXIT_SLIPPAGE)
+    rate = slippage if slippage is not None else EXIT_SLIPPAGE
+    return reference_price * (Decimal("1") - rate)
 
 
 def fee_for_fill(price: Decimal, quantity: Decimal) -> Decimal:

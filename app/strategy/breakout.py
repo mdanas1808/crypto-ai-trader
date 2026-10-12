@@ -1,8 +1,8 @@
 """Deterministic breakout strategy signals for prepared backtest data."""
 
+import math
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-import math
 from typing import Literal
 
 import pandas as pd
@@ -42,16 +42,27 @@ def generate_breakout_signals(
     _validate_timeline(context, "context_frame", context_required=True)
     _validate_timeline(trading, "trading_frame", context_required=False)
     required_trading = {
-        "exchange", "symbol", "open_time", "high", "close", "volume",
-        "ema_200", "rsi_14", "volume_sma_20", "atr_14",
-        "4h_exchange", "4h_symbol",
-        "4h_open_time", "4h_completion_time", "4h_close",
-        "4h_ema_20", "4h_ema_50", "4h_ema_200",
+        "exchange",
+        "symbol",
+        "open_time",
+        "high",
+        "close",
+        "volume",
+        "ema_200",
+        "rsi_14",
+        "volume_sma_20",
+        "atr_14",
+        "4h_exchange",
+        "4h_symbol",
+        "4h_open_time",
+        "4h_completion_time",
+        "4h_close",
+        "4h_ema_20",
+        "4h_ema_50",
+        "4h_ema_200",
     }
     _require_columns(trading, required_trading, "trading_frame")
-    _require_columns(
-        context, {"exchange", "symbol", "open_time", "high"}, "context_frame"
-    )
+    _require_columns(context, {"exchange", "symbol", "open_time", "high"}, "context_frame")
     if trading.empty:
         return []
 
@@ -115,8 +126,16 @@ def _evaluate_candidate(
     values = {
         name: _finite_number(row[name])
         for name in (
-            "close", "ema_200", "rsi_14", "volume", "volume_sma_20", "atr_14",
-            "4h_close", "4h_ema_20", "4h_ema_50", "4h_ema_200",
+            "close",
+            "ema_200",
+            "rsi_14",
+            "volume",
+            "volume_sma_20",
+            "atr_14",
+            "4h_close",
+            "4h_ema_20",
+            "4h_ema_50",
+            "4h_ema_200",
         )
     }
     if any(value is None for value in values.values()):
@@ -128,9 +147,7 @@ def _evaluate_candidate(
         return None
 
     prior_highs = history_highs[-BREAKOUT_CONTEXT_CANDLES:]
-    if len(prior_highs) != BREAKOUT_CONTEXT_CANDLES or any(
-        value is None for value in prior_highs
-    ):
+    if len(prior_highs) != BREAKOUT_CONTEXT_CANDLES or any(value is None for value in prior_highs):
         return None
     reference_high = max(value for value in prior_highs if value is not None)
 
@@ -146,8 +163,15 @@ def _evaluate_candidate(
     assert all(
         value is not None
         for value in (
-            close, ema_200, rsi_14, volume, volume_sma_20, four_hour_close,
-            four_hour_ema_20, four_hour_ema_50, four_hour_ema_200,
+            close,
+            ema_200,
+            rsi_14,
+            volume,
+            volume_sma_20,
+            four_hour_close,
+            four_hour_ema_20,
+            four_hour_ema_50,
+            four_hour_ema_200,
         )
     )
 
@@ -200,9 +224,7 @@ def _single_series_identity(frame: pd.DataFrame) -> tuple[str, str] | None:
     return next(iter(identities))
 
 
-def _validate_timeline(
-    frame: pd.DataFrame, name: str, *, context_required: bool
-) -> None:
+def _validate_timeline(frame: pd.DataFrame, name: str, *, context_required: bool) -> None:
     if not isinstance(frame.index, pd.DatetimeIndex):
         raise ValueError(f"{name} index must be a UTC DatetimeIndex")
     if str(frame.index.tz) != "UTC":

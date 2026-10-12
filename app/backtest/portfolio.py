@@ -78,10 +78,7 @@ class Portfolio:
         unrealized = sum(
             (
                 position.quantity * marks.get(symbol, position.entry_fill.price)
-                - (
-                    position.entry_fill.price * position.quantity
-                    + position.entry_fill.fee
-                )
+                - (position.entry_fill.price * position.quantity + position.entry_fill.fee)
                 for symbol, position in self.positions.items()
                 if self.asset_category(symbol) == category
             ),
@@ -92,14 +89,14 @@ class Portfolio:
     def daily_basket_loss(
         self, category: Literal["core", "satellite"], marks: dict[str, Decimal]
     ) -> Decimal:
-        return self._start_of_day_basket_pnl[category] - self._basket_pnl(
-            category, marks
-        )
+        return self._start_of_day_basket_pnl[category] - self._basket_pnl(category, marks)
 
     def equity(self, marks: dict[str, Decimal]) -> Decimal:
         return self.cash + sum(
-            (position.quantity * marks.get(symbol, position.entry_fill.price)
-             for symbol, position in self.positions.items()),
+            (
+                position.quantity * marks.get(symbol, position.entry_fill.price)
+                for symbol, position in self.positions.items()
+            ),
             Decimal("0"),
         )
 
@@ -111,9 +108,7 @@ class Portfolio:
         self.begin_day(timestamp, marks)
         if self._split_risk:
             core_loss = self.daily_basket_loss("core", marks)
-            core_limit = self._start_of_day_equity * Decimal(
-                str(self.config.core_daily_loss_limit)
-            )
+            core_limit = self._start_of_day_equity * Decimal(str(self.config.core_daily_loss_limit))
             if core_loss >= core_limit:
                 self._core_daily_loss_breached = True
 
@@ -178,6 +173,7 @@ class Portfolio:
         next_open: Decimal,
         marks: dict[str, Decimal],
         observed_at: datetime | None = None,
+        slippage: Decimal | None = None,
     ) -> Position | None:
         if signal.side != "long":
             return None
@@ -189,7 +185,17 @@ class Portfolio:
         equity = self.equity(marks)
         if equity <= 0:
             return None
-        fill_price = entry_fill_price(next_open)
+        if slippage is not None:
+            fill_price = entry_fill_price(next_open, slippage=slippage)
+        elif self._split_risk:
+            cat_slip = (
+                Decimal("0.0005")
+                if self.asset_category(signal.symbol) == "core"
+                else Decimal("0.0020")
+            )
+            fill_price = entry_fill_price(next_open, slippage=cat_slip)
+        else:
+            fill_price = entry_fill_price(next_open)
         atr = decimal_atr(signal.atr_14)
         try:
             stop, target = stop_and_target(fill_price, atr)
@@ -251,9 +257,18 @@ class Portfolio:
         timestamp: datetime,
         reference_price: Decimal,
         reason: str,
+        slippage: Decimal | None = None,
     ) -> Trade:
         position = self.positions.pop(symbol)
-        fill_price = exit_fill_price(reference_price)
+        if slippage is not None:
+            fill_price = exit_fill_price(reference_price, slippage=slippage)
+        elif self._split_risk:
+            cat_slip = (
+                Decimal("0.0005") if self.asset_category(symbol) == "core" else Decimal("0.0020")
+            )
+            fill_price = exit_fill_price(reference_price, slippage=cat_slip)
+        else:
+            fill_price = exit_fill_price(reference_price)
         fee = fee_for_fill(fill_price, position.quantity)
         fill = Fill(
             symbol=symbol,
@@ -293,6 +308,7 @@ class Portfolio:
         timestamp: datetime,
         reference_price: Decimal,
         reason: str,
+        slippage: Decimal | None = None,
     ) -> Trade:
         if reduce_ratio is not None:
             fraction = Decimal(str(reduce_ratio))
@@ -300,9 +316,7 @@ class Portfolio:
         if position is None:
             raise KeyError(f"no position for {symbol}")
 
-        reduce_qty = round_quantity_down(
-            position.quantity * fraction, self.config.quantity_step
-        )
+        reduce_qty = round_quantity_down(position.quantity * fraction, self.config.quantity_step)
         remaining_qty = position.quantity - reduce_qty
 
         if (
@@ -314,9 +328,18 @@ class Portfolio:
                 timestamp=timestamp,
                 reference_price=reference_price,
                 reason=reason,
+                slippage=slippage,
             )
 
-        fill_price = exit_fill_price(reference_price)
+        if slippage is not None:
+            fill_price = exit_fill_price(reference_price, slippage=slippage)
+        elif self._split_risk:
+            cat_slip = (
+                Decimal("0.0005") if self.asset_category(symbol) == "core" else Decimal("0.0020")
+            )
+            fill_price = exit_fill_price(reference_price, slippage=cat_slip)
+        else:
+            fill_price = exit_fill_price(reference_price)
         fee = fee_for_fill(fill_price, reduce_qty)
         fill = Fill(
             symbol=symbol,
@@ -369,4 +392,3 @@ class Portfolio:
             initial_risk=remaining_risk,
         )
         return trade
-

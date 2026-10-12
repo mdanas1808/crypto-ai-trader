@@ -1,7 +1,8 @@
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-import logging
 from unittest.mock import AsyncMock, MagicMock
+
 import httpx
 import pandas as pd
 import pytest
@@ -9,7 +10,6 @@ import pytest
 from app.analysis.explainer import (
     DEFAULT_GROQ_MODEL,
     ENTRY_FALLBACK_REASON,
-    FUNDAMENTAL_TIMEOUT_FALLBACK,
     GROQ_COMPLETIONS_URL,
     POSITION_REVIEW_FALLBACK_REASON,
     SignalExplainer,
@@ -142,7 +142,9 @@ def test_explainer_initialization(monkeypatch):
     assert explainer.timeout == 5.0
     assert explainer.api_key is None
 
-    custom = TradeExplainer(price_decimals=2, currency="USD", api_key="test_key", model="test-model")
+    custom = TradeExplainer(
+        price_decimals=2, currency="USD", api_key="test_key", model="test-model"
+    )
     assert custom.price_decimals == 2
     assert custom.currency == "USD"
     assert custom.api_key == "test_key"
@@ -179,7 +181,7 @@ async def test_explain_signal_generates_detailed_reasoning():
     assert "EMA 200" in explanation
     # 1H trend & resistance breakout
     assert "101.50" in explanation  # 1H close
-    assert "95.00" in explanation   # 1H EMA 200
+    assert "95.00" in explanation  # 1H EMA 200
     assert "100.00" in explanation  # 20-candle resistance high
     # 1H momentum
     assert "RSI(14) is 62.50" in explanation
@@ -534,9 +536,7 @@ async def test_llm_fallback_on_rate_limit_429(caplog):
 @pytest.mark.asyncio
 async def test_llm_fallback_on_server_error_500(caplog):
     mock_client = AsyncMock()
-    mock_client.post.return_value = httpx.Response(
-        status_code=500, text="Internal Server Error"
-    )
+    mock_client.post.return_value = httpx.Response(status_code=500, text="Internal Server Error")
 
     explainer = TradeExplainer(api_key="gsk_key", async_client=mock_client)
     data = make_test_data()
@@ -569,7 +569,8 @@ async def test_llm_fallback_on_network_error(caplog):
 async def test_llm_fallback_on_malformed_json_or_empty_choices(caplog):
     mock_client = AsyncMock()
     mock_client.post.return_value = httpx.Response(
-        status_code=200, json={"choices": []}  # Empty choices
+        status_code=200,
+        json={"choices": []},  # Empty choices
     )
 
     explainer = TradeExplainer(api_key="gsk_key", async_client=mock_client)
@@ -669,10 +670,7 @@ async def test_evaluate_fundamentals_rejected():
     )
 
     assert approved is False
-    assert (
-        reason
-        == "Critical smart contract exploit reported draining protocol liquidity pools."
-    )
+    assert reason == "Critical smart contract exploit reported draining protocol liquidity pools."
     assert metadata["verdict"] == "REJECT"
     assert metadata["risk_level"] == "CRITICAL"
     assert metadata["risk_type"] == "exploit"
@@ -883,9 +881,7 @@ async def test_evaluate_fundamentals_native_json_api_parameters_and_signal_expla
 @pytest.mark.asyncio
 async def test_evaluate_fundamentals_timeout_and_error_fallback_in_entry():
     mock_client = AsyncMock()
-    mock_client.post.side_effect = httpx.TimeoutException(
-        "Groq request timed out after 4.0s"
-    )
+    mock_client.post.side_effect = httpx.TimeoutException("Groq request timed out after 4.0s")
 
     explainer = TradeExplainer(api_key="gsk_test_key", async_client=mock_client)
     approved, reason, metadata = await explainer.evaluate_fundamentals(
@@ -902,9 +898,7 @@ async def test_evaluate_fundamentals_timeout_and_error_fallback_in_entry():
 
     # HTTP 500 error falls back safely to REJECT in ENTRY
     mock_client.post.side_effect = None
-    mock_client.post.return_value = httpx.Response(
-        status_code=500, text="Internal Server Error"
-    )
+    mock_client.post.return_value = httpx.Response(status_code=500, text="Internal Server Error")
     approved_err, reason_err, meta_err = await explainer.evaluate_fundamentals(
         "RENDERUSDT", "<news_data></news_data>", mode="ENTRY"
     )
@@ -930,9 +924,7 @@ async def test_evaluate_fundamentals_timeout_and_error_fallback_in_entry():
 @pytest.mark.asyncio
 async def test_evaluate_fundamentals_timeout_fallback_in_position_review():
     mock_client = AsyncMock()
-    mock_client.post.side_effect = httpx.TimeoutException(
-        "Groq request timed out after 4.0s"
-    )
+    mock_client.post.side_effect = httpx.TimeoutException("Groq request timed out after 4.0s")
 
     explainer = TradeExplainer(api_key="gsk_test_key", async_client=mock_client)
     approved, reason, metadata = await explainer.evaluate_fundamentals(
@@ -950,9 +942,7 @@ async def test_evaluate_fundamentals_timeout_fallback_in_position_review():
 @pytest.mark.asyncio
 async def test_evaluate_fundamentals_retry_fires_once_before_fallback():
     mock_client = AsyncMock()
-    mock_client.post.side_effect = httpx.TimeoutException(
-        "Groq request timed out"
-    )
+    mock_client.post.side_effect = httpx.TimeoutException("Groq request timed out")
 
     explainer = TradeExplainer(api_key="gsk_test_key", async_client=mock_client)
     approved, reason, metadata = await explainer.evaluate_fundamentals(
@@ -969,7 +959,7 @@ async def test_evaluate_fundamentals_retry_fires_once_before_fallback():
     mock_client.post.side_effect = None
     mock_client.post.return_value = httpx.Response(
         status_code=200,
-        json={"choices": [{"message": {"role": "assistant", "content": "malformed { json" }}]},
+        json={"choices": [{"message": {"role": "assistant", "content": "malformed { json"}}]},
     )
 
     approved_json, reason_json, meta_json = await explainer.evaluate_fundamentals(
@@ -1170,6 +1160,7 @@ async def test_evaluate_fundamentals_consecutive_fallbacks_halt_entries():
 @pytest.mark.asyncio
 async def test_evaluate_fundamentals_hallucinated_driving_news_id_fallback():
     import hashlib
+
     mock_client = AsyncMock()
     explainer = TradeExplainer(api_key="gsk_test_key", async_client=mock_client)
 
@@ -1198,7 +1189,9 @@ async def test_evaluate_fundamentals_hallucinated_driving_news_id_fallback():
     assert metadata["verdict"] == "REJECT"
     # Hallucinated ID must be replaced by hash of first relevant news item
     expected_hash = hashlib.sha256(
-        "[1h ago | CoinDesk] Real Bridge Exploit drains 50M funds :: Team investigating".encode("utf-8")
+        "[1h ago | CoinDesk] Real Bridge Exploit drains 50M funds :: Team investigating".encode(
+            "utf-8"
+        )
     ).hexdigest()[:16]
     assert metadata["driving_news_id"] == expected_hash
     assert metadata["hallucinated_driving_news_id"] == "completely_invented_id_999"
@@ -1263,7 +1256,3 @@ async def test_evaluate_fundamentals_circuit_breaker_auto_reset():
     assert app_entry is True
     assert meta_entry["verdict"] == "APPROVE"
     assert explainer.is_entries_halted("SOLUSDT") is False
-
-
-
-

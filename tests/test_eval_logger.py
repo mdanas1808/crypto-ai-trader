@@ -1,6 +1,7 @@
+import os
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-import os
+
 import pytest
 
 from app.analysis.eval_logger import FundamentalEvalLogger
@@ -158,7 +159,7 @@ async def test_eval_logger_logs_all_decisions(tmp_path):
     eval_time = datetime(2024, 6, 1, 12, 0, tzinfo=timezone.utc)
 
     # 1. Log APPROVE (with news)
-    id_approve = logger.log_decision(
+    logger.log_decision(
         symbol="SOLUSDT",
         current_price=150.0,
         raw_inputs="<news_data>[1h ago | CoinDesk] Positive developer update</news_data>",
@@ -171,7 +172,7 @@ async def test_eval_logger_logs_all_decisions(tmp_path):
     )
 
     # 2. Log APPROVE (no-news)
-    id_no_news = logger.log_decision(
+    logger.log_decision(
         symbol="BTCUSDT",
         current_price=65000.0,
         raw_inputs="<news_data></news_data>",
@@ -184,7 +185,7 @@ async def test_eval_logger_logs_all_decisions(tmp_path):
     )
 
     # 3. Log POSITION_REVIEW HOLD
-    id_hold = logger.log_decision(
+    logger.log_decision(
         symbol="FETUSDT",
         current_price=2.1,
         raw_inputs="<news_data>Routine commentary</news_data>",
@@ -197,7 +198,7 @@ async def test_eval_logger_logs_all_decisions(tmp_path):
     )
 
     # 4. Log POSITION_REVIEW REDUCE
-    id_reduce = logger.log_decision(
+    logger.log_decision(
         symbol="NEARUSDT",
         current_price=5.2,
         raw_inputs="<news_data>Upcoming unlock risk</news_data>",
@@ -210,7 +211,7 @@ async def test_eval_logger_logs_all_decisions(tmp_path):
     )
 
     # 5. Log POSITION_REVIEW EXIT
-    id_exit = logger.log_decision(
+    logger.log_decision(
         symbol="TAOUSDT",
         current_price=400.0,
         raw_inputs="<news_data>Critical exploit</news_data>",
@@ -319,3 +320,129 @@ async def test_compute_outcomes_script_processes_pending_evaluations(tmp_path):
     assert record["price_t_24h"] == pytest.approx(122.4)
     assert record["return_24h"] == pytest.approx(0.20)
 
+
+@pytest.mark.asyncio
+async def test_eval_logger_records_blocked_by_regime_and_computes_outcomes(tmp_path):
+    from scripts.compute_outcomes import compute_outcomes_for_database
+
+    db_path = str(tmp_path / "test_regime_eval.db")
+    log_file = str(tmp_path / "test_regime_eval.log")
+
+    logger = FundamentalEvalLogger(db_path=db_path, log_file=log_file)
+    eval_time = datetime(2024, 6, 1, 12, 0, tzinfo=timezone.utc)
+
+    # Log BLOCKED_BY_REGIME signal
+    eval_id = logger.log_regime_blocked_signal(
+        symbol="TAOUSDT",
+        current_price=Decimal("400.00"),
+        reason="Blocked: BTC downtrend regime",
+        timestamp=eval_time,
+    )
+
+    rec = logger.get_evaluation(eval_id)
+    assert rec is not None
+    assert rec["symbol"] == "TAOUSDT"
+    assert rec["verdict"] == "APPROVE"
+    assert rec["regime_state"] == "DOWNTREND"
+    assert rec["regime_blocked"] == 1
+    assert rec["outcome_status"] == "PENDING"
+
+    # Mock candles: Next open=400.0, T+1h=392.0 (-2%), T+4h=380.0 (-5%), T+24h=360.0 (-10%)
+    mock_candles = [
+        [
+            int(eval_time.timestamp() * 1000),
+            "400.0",
+            "405.0",
+            "390.0",
+            "395.0",
+            "100",
+            int((eval_time + timedelta(hours=1)).timestamp() * 1000) - 1,
+        ],
+        [
+            int((eval_time + timedelta(hours=1)).timestamp() * 1000),
+            "395.0",
+            "396.0",
+            "390.0",
+            "392.0",
+            "100",
+            int((eval_time + timedelta(hours=2)).timestamp() * 1000) - 1,
+        ],
+        [
+            int((eval_time + timedelta(hours=4)).timestamp() * 1000),
+            "385.0",
+            "388.0",
+            "378.0",
+            "380.0",
+            "100",
+            int((eval_time + timedelta(hours=5)).timestamp() * 1000) - 1,
+        ],
+        [
+            int((eval_time + timedelta(hours=24)).timestamp() * 1000),
+            "365.0",
+            "370.0",
+            "358.0",
+            "360.0",
+            "100",
+            int((eval_time + timedelta(hours=25)).timestamp() * 1000) - 1,
+        ],
+    ]
+
+    async def mock_candle_fetcher(sym: str, start_time: datetime, limit: int):
+        return mock_candles
+
+    processed = await compute_outcomes_for_database(
+        db_path=db_path,
+        candle_fetcher=mock_candle_fetcher,
+    )
+    assert processed == 1
+
+    updated = logger.get_evaluation(eval_id)
+    assert updated["outcome_status"] == "COMPLETED"
+    assert updated["hypothetical_fill_price"] == pytest.approx(400.0)
+    assert updated["return_1h"] == pytest.approx(-0.02)
+    assert updated["return_4h"] == pytest.approx(-0.05)
+    assert updated["return_24h"] == pytest.approx(-0.10)
+    # Net returns for Satellite coins deduct 0.60% (0.006)
+    assert updated["net_return_1h"] == pytest.approx(-0.026)
+    assert updated["net_return_4h"] == pytest.approx(-0.056)
+    assert updated["net_return_24h"] == pytest.approx(-0.106)
+
+
+def test_eval_logger_fallback_field_and_queries(tmp_path):
+    db_path = str(tmp_path / "test_fallback.db")
+    log_file = str(tmp_path / "test_fallback.log")
+    logger = FundamentalEvalLogger(db_path=db_path, log_file=log_file)
+
+    eval_time = datetime(2024, 6, 1, 12, 0, tzinfo=timezone.utc)
+    id1 = logger.log_decision(
+        symbol="FETUSDT",
+        current_price=2.0,
+        raw_inputs="news",
+        verdict="FALLBACK_REJECT",
+        risk_level="HIGH",
+        confidence=0.0,
+        reason="Fallback rejection due to network error",
+        mode="ENTRY",
+        is_fallback=True,
+        timestamp=eval_time,
+    )
+    id2 = logger.log_decision(
+        symbol="FETUSDT",
+        current_price=2.0,
+        raw_inputs="news",
+        verdict="REJECT",
+        risk_level="HIGH",
+        confidence=0.8,
+        reason="Exploit detected",
+        mode="ENTRY",
+        is_fallback=False,
+        timestamp=eval_time,
+    )
+
+    rec1 = logger.get_evaluation(id1)
+    rec2 = logger.get_evaluation(id2)
+
+    assert rec1["is_fallback"] == 1
+    assert rec1["verdict"] == "FALLBACK_REJECT"
+    assert rec2["is_fallback"] == 0
+    assert rec2["verdict"] == "REJECT"

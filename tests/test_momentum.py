@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
+
 import httpx
 import pytest
 
@@ -65,9 +66,7 @@ async def test_btc_regime_filter_fetch_via_http_client():
     # 55 daily klines from Binance API format
     # row[4] is close price
     kline_rows = [[0, "100", "110", "90", str(50000 + i * 100), "1000"] for i in range(55)]
-    mock_http.get = AsyncMock(
-        return_value=httpx.Response(status_code=200, json=kline_rows)
-    )
+    mock_http.get = AsyncMock(return_value=httpx.Response(status_code=200, json=kline_rows))
 
     filter_ = BtcRegimeFilter(sma_period=50, http_client=mock_http)
     closes = await filter_.fetch_btc_daily_closes()
@@ -122,14 +121,29 @@ async def test_btc_regime_filter_drops_unclosed_candle():
     rows = []
     for i in range(50):
         # 12-element kline format: row[4] = close, row[6] = close_time
-        rows.append([0, "100", "110", "90", str(50000 + i * 10), "100", past_close_ms, "100", 10, "50", "50", "0"])
+        rows.append(
+            [
+                0,
+                "100",
+                "110",
+                "90",
+                str(50000 + i * 10),
+                "100",
+                past_close_ms,
+                "100",
+                10,
+                "50",
+                "50",
+                "0",
+            ]
+        )
 
     # Open / forming candle
-    rows.append([0, "100", "110", "90", "99999", "100", future_close_ms, "100", 10, "50", "50", "0"])
-
-    mock_http.get = AsyncMock(
-        return_value=httpx.Response(status_code=200, json=rows)
+    rows.append(
+        [0, "100", "110", "90", "99999", "100", future_close_ms, "100", 10, "50", "50", "0"]
     )
+
+    mock_http.get = AsyncMock(return_value=httpx.Response(status_code=200, json=rows))
 
     filter_ = BtcRegimeFilter(sma_period=50, http_client=mock_http)
     closes = await filter_.fetch_btc_daily_closes()
@@ -139,3 +153,31 @@ async def test_btc_regime_filter_drops_unclosed_candle():
     assert closes[-1] == Decimal("50490")
     assert Decimal("99999") not in closes
 
+
+@pytest.mark.asyncio
+async def test_btc_regime_filter_replays_100_candles_startup():
+    # Construct 100 historical completed daily candles:
+    # First 50 days at 100.00
+    # Day 51 drops to 97.00 (triggers DOWNTREND <= 98.00 threshold)
+    # Day 52..100 price rebounds to 101.00 (SMA is ~100.92, price 101 > SMA, but < 102.94 threshold)
+    # Without replay: guessing based purely on latest candle (101 > 100.92) would wrongly guess UPTREND!
+    # With replay over the past 100 candles: it correctly retains the DOWNTREND state!
+    closes = [Decimal("100")] * 50 + [Decimal("97")] + [Decimal("101")] * 49
+    assert len(closes) == 100
+
+    filter_ = BtcRegimeFilter(sma_period=50, hysteresis_pct=Decimal("0.02"))
+    # Replay past 100 candles
+    regime = filter_.replay_state_machine(closes, window=100)
+    assert regime == "DOWNTREND"
+    assert filter_._current_regime == "DOWNTREND"
+
+    # Now verify async initialize() also queries and replayed state
+    candles = [make_candle(close=float(c)) for c in closes]
+    filter_init = BtcRegimeFilter(
+        sma_period=50,
+        hysteresis_pct=Decimal("0.02"),
+        candles_provider=lambda: candles,
+    )
+    init_regime = await filter_init.initialize()
+    assert init_regime == "DOWNTREND"
+    assert await filter_init.is_uptrend() is False

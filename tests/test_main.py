@@ -1,11 +1,11 @@
+import asyncio
+import logging
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from decimal import Decimal
-import asyncio
-import logging
+
 import pytest
 from fastapi.testclient import TestClient
-import uvicorn
 
 from app.backtest.models import BacktestConfig
 from app.main import app, build_app, main
@@ -161,7 +161,9 @@ async def test_main_logs_crashed_task_exception(caplog):
 @pytest.mark.asyncio
 async def test_fetch_dynamic_trending_symbols_parses_and_filters_fixed(monkeypatch):
     from unittest.mock import AsyncMock, MagicMock
+
     import httpx
+
     from app.main import FIXED_SYMBOLS, fetch_dynamic_trending_symbols
 
     assert FIXED_SYMBOLS == ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "ZECUSDT"]
@@ -191,7 +193,9 @@ async def test_fetch_dynamic_trending_symbols_parses_and_filters_fixed(monkeypat
 @pytest.mark.asyncio
 async def test_fetch_dynamic_trending_symbols_fallback_on_network_error(monkeypatch):
     from unittest.mock import AsyncMock
+
     import httpx
+
     from app.main import FALLBACK_DYNAMIC_SYMBOLS, fetch_dynamic_trending_symbols
 
     mock_client = AsyncMock()
@@ -203,4 +207,3 @@ async def test_fetch_dynamic_trending_symbols_fallback_on_network_error(monkeypa
 
     symbols = await fetch_dynamic_trending_symbols(limit=5)
     assert symbols == FALLBACK_DYNAMIC_SYMBOLS
-

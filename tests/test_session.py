@@ -1,11 +1,12 @@
-from collections.abc import AsyncIterator
-from datetime import datetime, timedelta, timezone
-from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock
 import asyncio
 import logging
 import os
 import signal
+from collections.abc import AsyncIterator
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from app.backtest.models import BacktestConfig
@@ -442,9 +443,7 @@ async def test_session_core_symbol_bypasses_fundamental_veto(monkeypatch):
         return "Should not be fetched for core symbols"
 
     class MockExplainer:
-        async def evaluate_fundamentals(
-            self, symbol: str, news_context: str
-        ) -> tuple[bool, str]:
+        async def evaluate_fundamentals(self, symbol: str, news_context: str) -> tuple[bool, str]:
             eval_called.append((symbol, news_context))
             return False, "Should not be invoked for core symbols"
 
@@ -471,9 +470,7 @@ async def test_session_core_symbol_bypasses_fundamental_veto(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_session_satellite_symbol_invokes_and_respects_ai_veto_rejection(
-    monkeypatch, caplog
-):
+async def test_session_satellite_symbol_invokes_and_respects_ai_veto_rejection(monkeypatch, caplog):
     executor = PaperExecutor(make_config())
     stream = MockKlineStream()
 
@@ -485,9 +482,7 @@ async def test_session_satellite_symbol_invokes_and_respects_ai_veto_rejection(
         return "- Major smart contract exploit reported on protocol bridge."
 
     class MockExplainer:
-        async def evaluate_fundamentals(
-            self, symbol: str, news_context: str
-        ) -> tuple[bool, str]:
+        async def evaluate_fundamentals(self, symbol: str, news_context: str) -> tuple[bool, str]:
             eval_called.append((symbol, news_context))
             return False, "Protocol suffered an active bridge exploit."
 
@@ -524,9 +519,7 @@ async def test_session_satellite_symbol_invokes_and_respects_ai_veto_rejection(
     vetoed = session.vetoed_signals[0]
     assert vetoed.symbol == "TAOUSDT"
     assert getattr(vetoed, "status", None) == "VETOED"
-    assert "Protocol suffered an active bridge exploit." in getattr(
-        vetoed, "explanation", ""
-    )
+    assert "Protocol suffered an active bridge exploit." in getattr(vetoed, "explanation", "")
 
 
 @pytest.mark.asyncio
@@ -540,9 +533,7 @@ async def test_session_satellite_symbol_approved_appends_reason_and_submits(
         return "- Positive ecosystem growth and partnership expansion."
 
     class MockExplainer:
-        async def evaluate_fundamentals(
-            self, symbol: str, news_context: str
-        ) -> tuple[bool, str]:
+        async def evaluate_fundamentals(self, symbol: str, news_context: str) -> tuple[bool, str]:
             return True, "Fundamentals are clean with strong ecosystem momentum."
 
     monkeypatch.setattr("app.trading.session.fetch_recent_news", mock_fetch_news)
@@ -564,9 +555,8 @@ async def test_session_satellite_symbol_approved_appends_reason_and_submits(
     submitted_sig = session.pending_signals[0]
     assert submitted_sig.symbol == "FETUSDT"
     assert getattr(submitted_sig, "status", None) == "APPROVED"
-    assert (
-        "Fundamentals are clean with strong ecosystem momentum."
-        in getattr(submitted_sig, "explanation", "")
+    assert "Fundamentals are clean with strong ecosystem momentum." in getattr(
+        submitted_sig, "explanation", ""
     )
 
 
@@ -602,9 +592,7 @@ async def test_session_periodic_position_review_exit_order_flow(monkeypatch, cap
     sig = make_signal(symbol="TAOUSDT", opened=START)
     executor._last_closed["TAOUSDT"] = c1
     assert executor.submit_signal(sig) is True
-    obs = make_observation(
-        symbol="TAOUSDT", opened=START + timedelta(hours=1), price=D("10")
-    )
+    obs = make_observation(symbol="TAOUSDT", opened=START + timedelta(hours=1), price=D("10"))
     pos = executor.on_open_observation(obs)
     assert pos is not None
     assert "TAOUSDT" in executor.positions
@@ -677,9 +665,7 @@ async def test_session_periodic_position_review_reduce_order_flow(monkeypatch, c
     sig = make_signal(symbol="FETUSDT", opened=START)
     executor._last_closed["FETUSDT"] = c1
     assert executor.submit_signal(sig) is True
-    obs = make_observation(
-        symbol="FETUSDT", opened=START + timedelta(hours=1), price=D("10")
-    )
+    obs = make_observation(symbol="FETUSDT", opened=START + timedelta(hours=1), price=D("10"))
     pos = executor.on_open_observation(obs)
     assert pos is not None
     orig_qty = pos.quantity
@@ -731,9 +717,7 @@ async def test_session_periodic_position_review_hold_does_not_close(monkeypatch)
     sig = make_signal(symbol="RENDERUSDT", opened=START)
     executor._last_closed["RENDERUSDT"] = c1
     assert executor.submit_signal(sig) is True
-    obs = make_observation(
-        symbol="RENDERUSDT", opened=START + timedelta(hours=1), price=D("10")
-    )
+    obs = make_observation(symbol="RENDERUSDT", opened=START + timedelta(hours=1), price=D("10"))
     assert executor.on_open_observation(obs) is not None
     assert "RENDERUSDT" in executor.positions
 
@@ -780,9 +764,7 @@ async def test_session_periodic_position_review_ignores_core_positions(monkeypat
     sig = make_signal(symbol="BTCUSDT", opened=START)
     executor._last_closed["BTCUSDT"] = c1
     assert executor.submit_signal(sig) is True
-    obs = make_observation(
-        symbol="BTCUSDT", opened=START + timedelta(hours=1), price=D("10")
-    )
+    obs = make_observation(symbol="BTCUSDT", opened=START + timedelta(hours=1), price=D("10"))
     assert executor.on_open_observation(obs) is not None
     assert "BTCUSDT" in executor.positions
 
@@ -896,9 +878,7 @@ async def test_session_deduplication_prevents_repeated_reduce(monkeypatch, caplo
     sig = make_signal(symbol="FETUSDT", opened=START)
     executor._last_closed["FETUSDT"] = c1
     executor.submit_signal(sig)
-    obs = make_observation(
-        symbol="FETUSDT", opened=START + timedelta(hours=1), price=D("10")
-    )
+    obs = make_observation(symbol="FETUSDT", opened=START + timedelta(hours=1), price=D("10"))
     pos = executor.on_open_observation(obs)
     assert pos is not None
     orig_qty = pos.quantity
@@ -964,9 +944,7 @@ async def test_session_injection_suspected_during_position_review_does_not_liqui
     sig = make_signal(symbol="FETUSDT", opened=START)
     executor._last_closed["FETUSDT"] = c1
     executor.submit_signal(sig)
-    obs = make_observation(
-        symbol="FETUSDT", opened=START + timedelta(hours=1), price=D("10")
-    )
+    obs = make_observation(symbol="FETUSDT", opened=START + timedelta(hours=1), price=D("10"))
     pos = executor.on_open_observation(obs)
     assert pos is not None
     orig_qty = pos.quantity
@@ -1022,9 +1000,7 @@ async def test_session_llm_calls_outside_portfolio_lock(monkeypatch):
     sig = make_signal(symbol="FETUSDT", opened=START)
     executor._last_closed["FETUSDT"] = c1
     executor.submit_signal(sig)
-    obs = make_observation(
-        symbol="FETUSDT", opened=START + timedelta(hours=1), price=D("10")
-    )
+    obs = make_observation(symbol="FETUSDT", opened=START + timedelta(hours=1), price=D("10"))
     pos = executor.on_open_observation(obs)
     assert pos is not None
 
@@ -1083,10 +1059,17 @@ async def test_session_revalidates_position_existence_and_size_before_action(mon
             return (
                 False,
                 "High risk",
-                {"verdict": "REDUCE", "risk_level": "HIGH", "confidence": 0.8, "reason": "High risk"},
+                {
+                    "verdict": "REDUCE",
+                    "risk_level": "HIGH",
+                    "confidence": 0.8,
+                    "reason": "High risk",
+                },
             )
 
-    session = PaperSession(stream=stream, executor=executor, explainer=ConcurrentlyClosingGatekeeper())  # type: ignore
+    session = PaperSession(
+        stream=stream, executor=executor, explainer=ConcurrentlyClosingGatekeeper()
+    )  # type: ignore
     trades = await session._review_open_positions()
     assert len(trades) == 0  # Action skipped because position was closed
 
@@ -1108,10 +1091,17 @@ async def test_session_revalidates_position_existence_and_size_before_action(mon
             return (
                 False,
                 "High risk",
-                {"verdict": "REDUCE", "risk_level": "HIGH", "confidence": 0.8, "reason": "High risk"},
+                {
+                    "verdict": "REDUCE",
+                    "risk_level": "HIGH",
+                    "confidence": 0.8,
+                    "reason": "High risk",
+                },
             )
 
-    session2 = PaperSession(stream=stream, executor=executor2, explainer=ConcurrentlyModifyingGatekeeper())  # type: ignore
+    session2 = PaperSession(
+        stream=stream, executor=executor2, explainer=ConcurrentlyModifyingGatekeeper()
+    )  # type: ignore
     trades2 = await session2._review_open_positions()
     assert len(trades2) == 0  # Action skipped because size changed
 
@@ -1119,6 +1109,7 @@ async def test_session_revalidates_position_existence_and_size_before_action(mon
 @pytest.mark.asyncio
 async def test_session_news_fetch_error_handling(monkeypatch):
     from app.analysis.fundamentals import NewsFetchError
+
     executor = PaperExecutor(make_config())
     stream = MockKlineStream()
 
@@ -1194,7 +1185,10 @@ async def test_session_escalation_after_4_cycles(monkeypatch):
     for expected_count in (2, 3, 4):
         t = await session._review_open_positions()
         assert len(t) == 0
-        assert session._position_review_history["FETUSDT"]["consecutive_reduce_cycles"] == expected_count
+        assert (
+            session._position_review_history["FETUSDT"]["consecutive_reduce_cycles"]
+            == expected_count
+        )
         assert "FETUSDT" in executor.positions
 
     # Cycle 5: consecutive_reduce_cycles becomes 5 (> 4) -> escalates to EXIT!
@@ -1268,6 +1262,7 @@ async def test_session_history_persists_to_disk_and_survives_recreation(tmp_path
 @pytest.mark.asyncio
 async def test_session_btc_regime_blocks_satellite_entry_during_downtrend():
     from unittest.mock import AsyncMock
+
     executor = PaperExecutor(make_config())
     stream = MockKlineStream()
 
@@ -1297,6 +1292,7 @@ async def test_session_btc_regime_blocks_satellite_entry_during_downtrend():
 @pytest.mark.asyncio
 async def test_session_btc_regime_allows_satellite_entry_during_uptrend(monkeypatch):
     from unittest.mock import AsyncMock
+
     executor = PaperExecutor(make_config())
     stream = MockKlineStream()
 
@@ -1310,7 +1306,11 @@ async def test_session_btc_regime_allows_satellite_entry_during_uptrend(monkeypa
 
     class ApproveGatekeeper:
         async def evaluate_fundamentals(self, symbol, news_context, mode="ENTRY"):
-            return True, "Fundamentals clean", {"verdict": "APPROVE", "risk_level": "LOW", "confidence": 0.9}
+            return (
+                True,
+                "Fundamentals clean",
+                {"verdict": "APPROVE", "risk_level": "LOW", "confidence": 0.9},
+            )
 
     sig = make_signal(symbol="TAOUSDT", opened=START)
     session = PaperSession(
@@ -1332,6 +1332,7 @@ async def test_session_btc_regime_allows_satellite_entry_during_uptrend(monkeypa
 @pytest.mark.asyncio
 async def test_session_btc_regime_does_not_block_core_entry_during_downtrend():
     from unittest.mock import AsyncMock
+
     executor = PaperExecutor(make_config())
     stream = MockKlineStream()
 
@@ -1359,6 +1360,7 @@ async def test_session_btc_regime_does_not_block_core_entry_during_downtrend():
 @pytest.mark.asyncio
 async def test_session_btc_regime_does_not_block_exits_or_reviews(monkeypatch):
     from unittest.mock import AsyncMock
+
     executor = PaperExecutor(make_config())
     stream = MockKlineStream()
 
@@ -1384,7 +1386,13 @@ async def test_session_btc_regime_does_not_block_exits_or_reviews(monkeypatch):
             return (
                 False,
                 "High risk",
-                {"verdict": "REDUCE", "risk_level": "HIGH", "confidence": 0.85, "reason": "High risk", "driving_news_id": "news_1"},
+                {
+                    "verdict": "REDUCE",
+                    "risk_level": "HIGH",
+                    "confidence": 0.85,
+                    "reason": "High risk",
+                    "driving_news_id": "news_1",
+                },
             )
 
     session = PaperSession(
@@ -1403,6 +1411,7 @@ async def test_session_btc_regime_does_not_block_exits_or_reviews(monkeypatch):
 @pytest.mark.asyncio
 async def test_session_eval_logger_records_evaluation_and_veto_outcome(tmp_path, monkeypatch):
     from app.analysis.eval_logger import FundamentalEvalLogger
+
     executor = PaperExecutor(make_config())
     stream = MockKlineStream()
 
@@ -1550,6 +1559,312 @@ async def test_multi_portfolio_fan_out_signal_execution(monkeypatch):
     assert "SOLUSDT" not in [s.symbol for s in session.executors["variant_e"].pending_signals]
 
 
+@pytest.mark.asyncio
+async def test_entry_eval_cached_single_llm_call_across_variants(monkeypatch):
+    executor = PaperExecutor(make_config())
+    stream = MockKlineStream()
+
+    # BTC in uptrend
+    regime_filter = MagicMock()
+    regime_filter.is_uptrend = AsyncMock(return_value=True)
+
+    eval_calls = []
+
+    class CountingGatekeeper:
+        async def evaluate_fundamentals(self, symbol, news_context, mode="ENTRY"):
+            eval_calls.append((symbol, mode))
+            return (
+                False,
+                "Bridge Exploit",
+                {
+                    "verdict": "REJECT",
+                    "risk_level": "HIGH",
+                    "confidence": 0.95,
+                    "reason": "Bridge Exploit",
+                },
+            )
+
+    async def mock_news(symbol, limit=5):
+        return "<news_data>Bridge Exploit</news_data>"
+
+    monkeypatch.setattr("app.trading.session.fetch_recent_news", mock_news)
+
+    sig_tao = make_signal(symbol="TAOUSDT", opened=START)
+    session = PaperSession(
+        stream=stream,
+        executor=executor,
+        strategy=lambda c: [sig_tao],
+        explainer=CountingGatekeeper(),  # type: ignore
+        btc_regime_filter=regime_filter,
+    )
+
+    c_tao = make_candle(symbol="TAOUSDT", opened=START)
+    await session.process_event(c_tao)
+
+    # Check gate was evaluated exactly ONCE for the signal
+    assert len(eval_calls) == 1
+    assert eval_calls[0] == ("TAOUSDT", "ENTRY")
+
+    # Variants A and C (which use gate) must BLOCK:
+    assert "TAOUSDT" not in [s.symbol for s in session.executors["variant_a"].pending_signals]
+    assert "TAOUSDT" not in [s.symbol for s in session.executors["variant_c"].pending_signals]
+    assert "TAOUSDT" not in [s.symbol for s in session.executors["variant_e"].pending_signals]
+
+    # Variants B and D (which ignore gate) must ALLOW:
+    assert "TAOUSDT" in [s.symbol for s in session.executors["variant_b"].pending_signals]
+    assert "TAOUSDT" in [s.symbol for s in session.executors["variant_d"].pending_signals]
+
+    # Variants B and D still log the exact same gate outcome
+    sig_b = [s for s in session.executors["variant_b"].pending_signals if s.symbol == "TAOUSDT"][0]
+    assert getattr(sig_b, "gate_verdict", None) == "REJECT"
 
 
+@pytest.mark.asyncio
+async def test_regime_blocked_signal_logged_in_eval_logger(monkeypatch, tmp_path):
+    import sqlite3
 
+    from app.analysis.eval_logger import FundamentalEvalLogger
+
+    db_path = str(tmp_path / "test_regime_eval.db")
+    eval_logger = FundamentalEvalLogger(db_path=db_path)
+
+    executor = PaperExecutor(make_config())
+    stream = MockKlineStream()
+
+    # BTC downtrend
+    regime_filter = MagicMock()
+    regime_filter.is_uptrend = AsyncMock(return_value=False)
+
+    async def mock_news(symbol, limit=5):
+        return "<news_data></news_data>"
+
+    monkeypatch.setattr("app.trading.session.fetch_recent_news", mock_news)
+
+    class MockExplainer:
+        async def evaluate_fundamentals(self, symbol, news_context, mode="ENTRY"):
+            return True, "All clear", {"verdict": "APPROVE"}
+
+    sig_fet = make_signal(symbol="FETUSDT", opened=START)
+    session = PaperSession(
+        stream=stream,
+        executor=executor,
+        strategy=lambda c: [sig_fet],
+        explainer=MockExplainer(),  # type: ignore
+        btc_regime_filter=regime_filter,
+        eval_logger=eval_logger,
+    )
+
+    c_fet = make_candle(symbol="FETUSDT", opened=START)
+    await session.process_event(c_fet)
+
+    # Check that FETUSDT was logged as BLOCKED_BY_REGIME
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    with conn:
+        rows = conn.execute(
+            "SELECT * FROM fundamental_evaluations WHERE symbol = 'FETUSDT'"
+        ).fetchall()
+    conn.close()
+
+    assert len(rows) == 1
+    assert rows[0]["verdict"] == "APPROVE"
+    assert rows[0]["regime_state"] == "DOWNTREND"
+    assert rows[0]["regime_blocked"] == 1
+    assert rows[0]["risk_level"] == "LOW"
+
+
+@pytest.mark.asyncio
+async def test_position_review_cached_single_llm_call_across_variants(monkeypatch):
+    executor = PaperExecutor(make_config())
+    stream = MockKlineStream()
+
+    # Setup open position in FETUSDT across variants
+    c1 = make_candle(symbol="FETUSDT", opened=START)
+    sig = make_signal(symbol="FETUSDT", opened=START)
+
+    eval_calls = []
+
+    class CountingGatekeeper:
+        async def evaluate_fundamentals(self, symbol, news_context, mode="POSITION_REVIEW"):
+            eval_calls.append((symbol, mode))
+            return (
+                False,
+                "Critical vulnerability",
+                {
+                    "verdict": "EXIT",
+                    "risk_level": "HIGH",
+                    "confidence": 0.9,
+                    "reason": "Critical vulnerability",
+                },
+            )
+
+    async def mock_news(symbol, limit=10):
+        return "<news_data></news_data>"
+
+    monkeypatch.setattr("app.trading.session.fetch_recent_news", mock_news)
+
+    session = PaperSession(
+        stream=stream,
+        executor=executor,
+        explainer=CountingGatekeeper(),  # type: ignore
+    )
+
+    # Open positions in variant_a, variant_b, and variant_c
+    for var_key in ("variant_a", "variant_b", "variant_c"):
+        exec_inst = session.executors[var_key]
+        exec_inst._last_closed["FETUSDT"] = c1
+        exec_inst.submit_signal(sig)
+        obs = make_observation(symbol="FETUSDT", opened=START + timedelta(hours=1), price=D("10"))
+        exec_inst.on_open_observation(obs)
+        assert "FETUSDT" in exec_inst.positions
+
+    await session._review_open_positions()
+
+    # Gate was called exactly ONCE despite 3 variants having open positions
+    assert len(eval_calls) == 1
+    assert eval_calls[0] == ("FETUSDT", "POSITION_REVIEW")
+
+    # Variant A (uses gate) had its position exited
+    assert "FETUSDT" not in session.executors["variant_a"].positions
+    # Variant C (uses gate) had its position exited
+    assert "FETUSDT" not in session.executors["variant_c"].positions
+    # Variant B (ignores gate) kept position open, but annotated with gate verdict
+    assert "FETUSDT" in session.executors["variant_b"].positions
+    pos_b = session.executors["variant_b"].positions["FETUSDT"]
+    assert getattr(pos_b, "last_reviewed_action", None) == "EXIT"
+
+
+@pytest.mark.asyncio
+async def test_session_regime_state_attached_and_variant_c_executes_when_btc_in_downtrend(
+    monkeypatch, tmp_path
+):
+    import sqlite3
+
+    from app.analysis.eval_logger import FundamentalEvalLogger
+
+    db_path = str(tmp_path / "test_regime_eval_c.db")
+    eval_logger = FundamentalEvalLogger(db_path=db_path)
+    executor = PaperExecutor(make_config())
+    stream = MockKlineStream()
+
+    sig = make_signal(symbol="FETUSDT", opened=START)
+
+    class DowntrendRegimeFilter:
+        async def is_uptrend(self) -> bool:
+            return False
+
+        def get_current_regime(self) -> str:
+            return "DOWNTREND"
+
+    class ApprovingGatekeeper:
+        async def evaluate_fundamentals(self, symbol, news_context, mode="ENTRY"):
+            return (
+                True,
+                "Strong technical setup and partnerships",
+                {
+                    "verdict": "APPROVE",
+                    "risk_level": "LOW",
+                    "confidence": 0.9,
+                    "reason": "Strong partnerships",
+                },
+            )
+
+    async def mock_news(symbol, limit=5):
+        return "<news_data>Positive developments</news_data>"
+
+    monkeypatch.setattr("app.trading.session.fetch_recent_news", mock_news)
+
+    session = PaperSession(
+        stream=stream,
+        executor=executor,
+        strategy=lambda c: [sig],
+        btc_regime_filter=DowntrendRegimeFilter(),  # type: ignore
+        explainer=ApprovingGatekeeper(),  # type: ignore
+        eval_logger=eval_logger,
+    )
+
+    c1 = make_candle(symbol="FETUSDT", opened=START)
+    await session.process_event(c1)
+
+    # 1. Uniform context: regime_state attached to signal
+    assert getattr(sig, "regime_state", None) == "DOWNTREND"
+    assert getattr(sig, "ai_approved", None) is True
+
+    # 2. Variant A (AI gate + Regime) blocked by downtrend
+    assert len(session.executors["variant_a"].pending_signals) == 0
+
+    # 3. Variant B (Regime only) blocked by downtrend
+    assert len(session.executors["variant_b"].pending_signals) == 0
+
+    # 4. Variant C (AI Gate only, NO regime filter) SUBMITS trade because AI approved it!
+    assert len(session.executors["variant_c"].pending_signals) == 1
+    sig_c = session.executors["variant_c"].pending_signals[0]
+    assert sig_c.symbol == "FETUSDT"
+    assert getattr(sig_c, "regime_state", None) == "DOWNTREND"
+    assert getattr(sig_c, "verdict", None) == "APPROVE"
+
+    # 5. Variant D (Baseline, no filters) SUBMITS trade
+    assert len(session.executors["variant_d"].pending_signals) == 1
+
+    # 6. Eval logger recorded signal with regime_blocked = 1 and verdict = APPROVE
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row
+    with conn:
+        rows = conn.execute(
+            "SELECT * FROM fundamental_evaluations WHERE symbol = 'FETUSDT'"
+        ).fetchall()
+    conn.close()
+
+    assert len(rows) == 1
+    assert rows[0]["symbol"] == "FETUSDT"
+    assert rows[0]["verdict"] == "APPROVE"
+    assert rows[0]["regime_state"] == "DOWNTREND"
+    assert rows[0]["regime_blocked"] == 1
+
+
+@pytest.mark.asyncio
+async def test_session_review_cache_freshness_across_cycles(monkeypatch):
+    executor = PaperExecutor(make_config())
+    stream = MockKlineStream()
+
+    c1 = make_candle(symbol="FETUSDT", opened=START)
+    sig = make_signal(symbol="FETUSDT", opened=START)
+
+    news_fetch_count = 0
+
+    async def mock_news(symbol, limit=10):
+        nonlocal news_fetch_count
+        news_fetch_count += 1
+        return f"<news_data>Fresh news cycle {news_fetch_count}</news_data>"
+
+    monkeypatch.setattr("app.trading.session.fetch_recent_news", mock_news)
+
+    class HoldGatekeeper:
+        async def evaluate_fundamentals(self, symbol, news_context, mode="POSITION_REVIEW"):
+            return (
+                True,
+                "All good",
+                {"verdict": "HOLD", "risk_level": "LOW", "confidence": 0.95, "reason": "All good"},
+            )
+
+    session = PaperSession(
+        stream=stream,
+        executor=executor,
+        explainer=HoldGatekeeper(),  # type: ignore
+    )
+
+    # Setup position in variant_a
+    exec_a = session.executors["variant_a"]
+    exec_a._last_closed["FETUSDT"] = c1
+    exec_a.submit_signal(sig)
+    obs = make_observation(symbol="FETUSDT", opened=START + timedelta(hours=1), price=D("10"))
+    exec_a.on_open_observation(obs)
+    assert "FETUSDT" in exec_a.positions
+
+    # Cycle 1
+    await session._review_open_positions(cycle_id="cycle_1")
+    assert news_fetch_count == 1
+
+    # Cycle 2 (30 minutes later) - cache is cleared, must fetch fresh news!
+    await session._review_open_positions(cycle_id="cycle_2")
+    assert news_fetch_count == 2

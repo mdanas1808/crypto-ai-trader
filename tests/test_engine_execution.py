@@ -21,24 +21,44 @@ def make_stream(symbol="BTCUSDT", *, count=2, opens=None, highs=None, lows=None,
     for offset in range(-20, 0):
         opened = START + timedelta(hours=offset)
         context_index.append(opened + timedelta(hours=1))
-        context_rows.append({"exchange": "binance_spot", "symbol": symbol,
-                             "open_time": opened, "high": Decimal("100")})
-    context = pd.DataFrame(context_rows, index=pd.DatetimeIndex(context_index, tz="UTC", name="decision_time"))
+        context_rows.append(
+            {
+                "exchange": "binance_spot",
+                "symbol": symbol,
+                "open_time": opened,
+                "high": Decimal("100"),
+            }
+        )
+    context = pd.DataFrame(
+        context_rows, index=pd.DatetimeIndex(context_index, tz="UTC", name="decision_time")
+    )
     rows = []
     index = []
     for i in range(count):
         opened = START + timedelta(hours=i)
         index.append(opened + timedelta(hours=1))
         row = {
-            "exchange": "binance_spot", "symbol": symbol, "interval": "1h",
-            "open_time": opened, "open": opens[i], "high": highs[i], "low": lows[i],
-            "close": closes[i], "volume": Decimal("20"),
-            "ema_200": 95.0, "rsi_14": 60.0, "volume_sma_20": 10.0, "atr_14": 2.5,
-            "4h_exchange": "binance_spot", "4h_symbol": symbol,
+            "exchange": "binance_spot",
+            "symbol": symbol,
+            "interval": "1h",
+            "open_time": opened,
+            "open": opens[i],
+            "high": highs[i],
+            "low": lows[i],
+            "close": closes[i],
+            "volume": Decimal("20"),
+            "ema_200": 95.0,
+            "rsi_14": 60.0,
+            "volume_sma_20": 10.0,
+            "atr_14": 2.5,
+            "4h_exchange": "binance_spot",
+            "4h_symbol": symbol,
             "4h_open_time": START - timedelta(hours=4),
             "4h_completion_time": START,
-            "4h_close": 110.0, "4h_ema_20": 105.0,
-            "4h_ema_50": 100.0, "4h_ema_200": 100.0,
+            "4h_close": 110.0,
+            "4h_ema_20": 105.0,
+            "4h_ema_50": 100.0,
+            "4h_ema_200": 100.0,
         }
         rows.append(row)
     trading = pd.DataFrame(rows, index=pd.DatetimeIndex(index, tz="UTC", name="decision_time"))
@@ -47,9 +67,7 @@ def make_stream(symbol="BTCUSDT", *, count=2, opens=None, highs=None, lows=None,
 
 def run(streams, *, end=START + timedelta(hours=10), **config_overrides):
     minimum_quantity = config_overrides.pop("minimum_quantity", Decimal("0.000001"))
-    config = BacktestConfig(
-        minimum_quantity=minimum_quantity, **config_overrides
-    )
+    config = BacktestConfig(minimum_quantity=minimum_quantity, **config_overrides)
     return run_backtest(streams, end_time=end, config=config)
 
 
@@ -172,8 +190,7 @@ def test_target_gap_with_low_through_stop_uses_stop_first():
 
 def test_multi_symbol_positions_share_limits_and_finish_at_end_of_backtest():
     streams = {
-        symbol: make_stream(symbol, count=2)
-        for symbol in ("DUSDT", "CUSDT", "BUSDT", "AUSDT")
+        symbol: make_stream(symbol, count=2) for symbol in ("DUSDT", "CUSDT", "BUSDT", "AUSDT")
     }
     result = run(
         streams,
@@ -186,8 +203,7 @@ def test_multi_symbol_positions_share_limits_and_finish_at_end_of_backtest():
     assert {trade.signal.symbol for trade in result.trades} == {"AUSDT", "BUSDT", "CUSDT"}
     assert all(trade.exit_reason == "end_of_backtest" for trade in result.trades)
     assert all(
-        trade.exit_fill.price == Decimal("101") * Decimal("0.9995")
-        for trade in result.trades
+        trade.exit_fill.price == Decimal("101") * Decimal("0.9995") for trade in result.trades
     )
     assert result.final_open_positions == ()
     assert result.final_cash == result.final_equity
@@ -195,10 +211,7 @@ def test_multi_symbol_positions_share_limits_and_finish_at_end_of_backtest():
 
 
 def test_shared_open_risk_limit_is_applied_across_symbols():
-    streams = {
-        symbol: make_stream(symbol, count=2)
-        for symbol in ("AUSDT", "BUSDT", "CUSDT")
-    }
+    streams = {symbol: make_stream(symbol, count=2) for symbol in ("AUSDT", "BUSDT", "CUSDT")}
     result = run(streams, end=START + timedelta(hours=1))
 
     # With fine quantity rounding, transaction costs make three individually
@@ -209,13 +222,15 @@ def test_shared_open_risk_limit_is_applied_across_symbols():
 
 def test_multiple_symbols_are_processed_chronologically():
     early = make_stream(
-        "BTCUSDT", count=3,
+        "BTCUSDT",
+        count=3,
         highs=[Decimal("102"), Decimal("110"), Decimal("104")],
         lows=[Decimal("99"), Decimal("90"), Decimal("99")],
         closes=[Decimal("101"), Decimal("103"), Decimal("101")],
     )
     late = make_stream(
-        "ETHUSDT", count=3,
+        "ETHUSDT",
+        count=3,
         highs=[Decimal("102"), Decimal("104"), Decimal("110")],
         lows=[Decimal("99"), Decimal("99"), Decimal("99")],
         closes=[Decimal("101"), Decimal("103"), Decimal("105")],
@@ -228,7 +243,8 @@ def test_multiple_symbols_are_processed_chronologically():
 
     assert [trade.signal.symbol for trade in result.trades] == ["BTCUSDT", "ETHUSDT"]
     assert [trade.exit_fill.timestamp for trade in result.trades] == [
-        START + timedelta(hours=2), START + timedelta(hours=3)
+        START + timedelta(hours=2),
+        START + timedelta(hours=3),
     ]
     assert result.trades[0].exit_reason == "stop_loss"
     assert result.trades[1].exit_reason == "take_profit"
@@ -289,7 +305,9 @@ def test_opening_gap_fill_time_precedes_completed_equity_observation():
     # The gap handling is an execution event at the open. The point at that
     # boundary remains the preceding completed-candle valuation; the state
     # after resolving the bar is observed at the next completed decision.
-    point_at_open = next(point for point in result.equity_curve if point.timestamp == gap_exit.timestamp)
+    point_at_open = next(
+        point for point in result.equity_curve if point.timestamp == gap_exit.timestamp
+    )
     completed_observation = next(
         point for point in result.equity_curve if point.timestamp == START + timedelta(hours=3)
     )
@@ -311,6 +329,9 @@ def test_equity_curve_uses_union_of_multi_symbol_decision_times():
     result = run({"BTCUSDT": early, "ETHUSDT": late}, end=START + timedelta(hours=3))
 
     assert [point.timestamp for point in result.equity_curve] == [
-        START, START + timedelta(hours=1), START + timedelta(hours=2),
-        START + timedelta(hours=3), START + timedelta(hours=4),
+        START,
+        START + timedelta(hours=1),
+        START + timedelta(hours=2),
+        START + timedelta(hours=3),
+        START + timedelta(hours=4),
     ]

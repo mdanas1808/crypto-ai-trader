@@ -43,4 +43,3 @@ class PaperSignalRecord(Base):
 
 
 __all__ = ["PaperTradeRecord", "PaperSignalRecord"]
-

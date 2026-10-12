@@ -78,7 +78,11 @@ def parse_kline_message(payload: str | bytes | dict[str, Any]) -> tuple[Candle, 
     # Binance WebSocket API subscription acknowledgement:
     # {"result": null, "id": 1}
     if "result" in message and "id" in message and "data" not in message:
-        if message["result"] is not None or isinstance(message["id"], bool) or not isinstance(message["id"], int):
+        if (
+            message["result"] is not None
+            or isinstance(message["id"], bool)
+            or not isinstance(message["id"], int)
+        ):
             raise WebSocketMessageError("invalid subscription acknowledgement")
         return None
 
@@ -138,7 +142,9 @@ def parse_kline_message(payload: str | bytes | dict[str, Any]) -> tuple[Candle, 
     return candle, closed
 
 
-def parse_candle_open_observation(payload: str | bytes | dict[str, Any]) -> CandleOpenObservation | None:
+def parse_candle_open_observation(
+    payload: str | bytes | dict[str, Any],
+) -> CandleOpenObservation | None:
     """Parse only the first-update fields needed for a forming candle's open.
 
     A closed kline and a subscription acknowledgement return ``None``. The
@@ -146,7 +152,11 @@ def parse_candle_open_observation(payload: str | bytes | dict[str, Any]) -> Cand
     """
     message = _decode_payload(payload)
     if "result" in message and "id" in message and "data" not in message:
-        if message["result"] is not None or isinstance(message["id"], bool) or not isinstance(message["id"], int):
+        if (
+            message["result"] is not None
+            or isinstance(message["id"], bool)
+            or not isinstance(message["id"], int)
+        ):
             raise WebSocketMessageError("invalid subscription acknowledgement")
         return None
 
@@ -216,7 +226,11 @@ class BinanceSpotKlineStream:
             raise ValueError(f"unsupported symbols: {', '.join(sorted(unsupported))}")
         if not isinstance(interval, str) or interval not in SUPPORTED_INTERVALS:
             raise ValueError(f"unsupported interval: {interval}")
-        resolved_url = base_url if base_url is not None else (url if url is not None else BINANCE_SPOT_WEBSOCKET_URL)
+        resolved_url = (
+            base_url
+            if base_url is not None
+            else (url if url is not None else BINANCE_SPOT_WEBSOCKET_URL)
+        )
         if not isinstance(resolved_url, str) or not resolved_url:
             raise ValueError("url must be a non-empty string")
         self.symbols = tuple(sorted(set(configured)))
@@ -280,7 +294,10 @@ class BinanceSpotKlineStream:
 
                 observation = parse_candle_open_observation(payload)
                 if observation is not None:
-                    if observation.symbol not in self.symbols or observation.interval != self.interval:
+                    if (
+                        observation.symbol not in self.symbols
+                        or observation.interval != self.interval
+                    ):
                         raise WebSocketMessageError(
                             "received an observation outside the configured symbol/interval streams"
                         )

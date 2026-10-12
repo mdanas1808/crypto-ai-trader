@@ -6,10 +6,9 @@ to the database asynchronously and non-disruptively.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from decimal import Decimal
-import logging
-from typing import Any
 
 from sqlalchemy.orm import Session
 
@@ -24,9 +23,7 @@ logger = logging.getLogger(__name__)
 class DatabaseAlertHandler:
     """Alert handler that persists signals and trades into the database."""
 
-    def __init__(
-        self, session_factory: Callable[[], Session] | None = None
-    ) -> None:
+    def __init__(self, session_factory: Callable[[], Session] | None = None) -> None:
         if session_factory is None:
             from app.database.database import SessionLocal
 
@@ -105,4 +102,3 @@ class DatabaseAlertHandler:
 
 
 __all__ = ["DatabaseAlertHandler"]
-

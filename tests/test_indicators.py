@@ -11,9 +11,7 @@ from app.market.models import Candle
 from app.market.validation import CandleSequenceValidationError
 
 
-def make_candles(
-    closes: list[int | float], volumes: list[int] | None = None
-) -> list[Candle]:
+def make_candles(closes: list[int | float], volumes: list[int] | None = None) -> list[Candle]:
     volumes = volumes if volumes is not None else list(range(1, len(closes) + 1))
     start = datetime(2024, 1, 1, tzinfo=timezone.utc)
     candles = []
@@ -52,9 +50,7 @@ def reference_wilder(values: list[float], period: int) -> list[float]:
     seed_index = period - 1
     result[seed_index] = sum(values[:period]) / period
     for index in range(period, len(values)):
-        result[index] = (
-            (period - 1) * result[index - 1] + values[index]
-        ) / period
+        result[index] = ((period - 1) * result[index - 1] + values[index]) / period
     return result
 
 
@@ -294,7 +290,9 @@ def test_indicator_calculation_rejects_gapped_candles() -> None:
 def test_appending_future_candles_does_not_change_past_indicators() -> None:
     closes = [100 + ((index * 11) % 17) - index * 0.05 for index in range(45)]
     prefix = make_candles(closes[:35])
-    extended = make_candles(closes[:35] + [5000, 7000, 9000, 11000, 13000, 15000, 17000, 19000, 21000, 23000])
+    extended = make_candles(
+        closes[:35] + [5000, 7000, 9000, 11000, 13000, 15000, 17000, 19000, 21000, 23000]
+    )
     prefix_result = calculate_indicators(prefix)
     extended_result = calculate_indicators(extended)
 

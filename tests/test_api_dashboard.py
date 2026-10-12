@@ -1,11 +1,11 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+
 import pytest
 from fastapi.testclient import TestClient
 
 from app.api.dashboard import (
     create_dashboard_app,
-    create_dashboard_router,
     set_dashboard_session,
 )
 from app.backtest.models import BacktestConfig
@@ -314,7 +314,10 @@ def test_dashboard_ui_serves_html():
     assert "tailwindcss" in res_root.text
     assert "Active Positions" in res_root.text
     assert "Pending Breakout Signals" in res_root.text
-    assert "Trade History &amp; AI Explanations" in res_root.text or "Trade History & AI Explanations" in res_root.text
+    assert (
+        "Trade History &amp; AI Explanations" in res_root.text
+        or "Trade History & AI Explanations" in res_root.text
+    )
 
     # Dedicated route /ui
     res_ui = client.get("/ui")

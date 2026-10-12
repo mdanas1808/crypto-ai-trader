@@ -136,9 +136,7 @@ def test_client_reports_http_status_error() -> None:
     ],
     ids=["malformed-json", "non-array-json"],
 )
-def test_client_rejects_malformed_exchange_payload(
-    response: httpx.Response, message: str
-) -> None:
+def test_client_rejects_malformed_exchange_payload(response: httpx.Response, message: str) -> None:
     async def handler(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/api/v3/time":
             return httpx.Response(200, json={"serverTime": 1_704_070_800_000})

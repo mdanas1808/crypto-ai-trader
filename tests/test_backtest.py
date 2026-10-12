@@ -58,7 +58,10 @@ def test_prepare_backtest_data_retrieves_and_calculates_without_exchange(
     result = prepare_backtest_data(db_session, "BTCUSDT", "1h")
 
     assert len(result) == 25
-    assert tuple(column for column in INDICATOR_COLUMNS if column in result.columns) == INDICATOR_COLUMNS
+    assert (
+        tuple(column for column in INDICATOR_COLUMNS if column in result.columns)
+        == INDICATOR_COLUMNS
+    )
     assert result.loc[19, "sma_20"] == pytest.approx(sum(range(100, 120)) / 20)
     assert all(isinstance(value, Decimal) for value in result["open"])
     assert all(isinstance(value, Decimal) for value in result["high"])
@@ -234,15 +237,13 @@ def test_completion_time_helpers_use_interval_duration_and_utc() -> None:
     utc = datetime(2024, 1, 1, 3, tzinfo=timezone.utc)
     offset = datetime(2024, 1, 1, 5, tzinfo=timezone(timedelta(hours=2)))
 
-    assert candle_completion_times([utc], "1h")[0] == datetime(
-        2024, 1, 1, 4, tzinfo=timezone.utc
-    )
+    assert candle_completion_times([utc], "1h")[0] == datetime(2024, 1, 1, 4, tzinfo=timezone.utc)
     assert candle_completion_times([offset], "1h")[0] == datetime(
         2024, 1, 1, 4, tzinfo=timezone.utc
     )
-    assert candle_completion_times(
-        [datetime(2024, 1, 1, tzinfo=timezone.utc)], "4h"
-    )[0] == datetime(2024, 1, 1, 4, tzinfo=timezone.utc)
+    assert candle_completion_times([datetime(2024, 1, 1, tzinfo=timezone.utc)], "4h")[
+        0
+    ] == datetime(2024, 1, 1, 4, tzinfo=timezone.utc)
 
 
 def test_alignment_preserves_utc_decision_timeline_for_offset_inputs() -> None:
@@ -336,11 +337,7 @@ def test_multitimeframe_preparation_separates_context_and_trading_rows(monkeypat
 
     def retrieve(_session, _symbol, interval, start_time, end_time, _exchange):
         source = hourly if interval == "1h" else four_hour
-        return [
-            candle
-            for candle in source
-            if start_time <= candle.open_time <= end_time
-        ]
+        return [candle for candle in source if start_time <= candle.open_time <= end_time]
 
     monkeypatch.setattr("app.backtest.data.get_candles_in_range", retrieve)
 
