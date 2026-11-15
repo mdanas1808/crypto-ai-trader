@@ -57,10 +57,25 @@ class DatabaseAlertHandler:
         try:
             session = self.session_factory()
             try:
+                direction = getattr(
+                    signal,
+                    "direction",
+                    "LONG" if str(signal.side).lower() in ("long", "buy") else "SHORT",
+                )
+                leverage = int(getattr(signal, "leverage", 1) or 1)
+                margin_used = Decimal(str(getattr(signal, "margin_used", Decimal("0")) or "0"))
+                stop_loss = Decimal(str(getattr(signal, "stop_loss", Decimal("0")) or "0"))
+                take_profit = Decimal(str(getattr(signal, "take_profit", Decimal("0")) or "0"))
+
                 record = PaperSignalRecord(
                     exchange=signal.exchange,
                     symbol=signal.symbol,
                     side=signal.side,
+                    direction=direction,
+                    leverage=leverage,
+                    margin_used=margin_used,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
                     decision_time=signal.decision_time,
                     signal_open_time=signal.signal_open_time,
                     atr_14=Decimal(str(signal.atr_14)),
@@ -90,16 +105,52 @@ class DatabaseAlertHandler:
         try:
             session = self.session_factory()
             try:
+                direction = getattr(
+                    trade,
+                    "direction",
+                    "LONG" if str(trade.signal.side).lower() in ("long", "buy") else "SHORT",
+                )
+                leverage = int(
+                    getattr(trade, "leverage", getattr(trade.signal, "leverage", 1)) or 1
+                )
+                margin_used = Decimal(
+                    str(
+                        getattr(
+                            trade, "margin_used", getattr(trade.signal, "margin_used", Decimal("0"))
+                        )
+                        or "0"
+                    )
+                )
+                stop_loss = Decimal(
+                    str(
+                        getattr(trade, "stop_loss", getattr(trade, "stop_price", Decimal("0")))
+                        or "0"
+                    )
+                )
+                take_profit = Decimal(
+                    str(
+                        getattr(trade, "take_profit", getattr(trade, "target_price", Decimal("0")))
+                        or "0"
+                    )
+                )
+                realized_pnl = getattr(trade, "realized_pnl", trade.net_pnl)
+
                 record = PaperTradeRecord(
                     exchange=trade.signal.exchange,
                     symbol=trade.signal.symbol,
                     side=trade.signal.side,
+                    direction=direction,
+                    leverage=leverage,
+                    margin_used=margin_used,
+                    stop_loss=stop_loss,
+                    take_profit=take_profit,
                     entry_time=trade.entry_fill.timestamp,
                     exit_time=trade.exit_fill.timestamp,
                     entry_price=trade.entry_fill.price,
                     exit_price=trade.exit_fill.price,
                     quantity=trade.quantity,
                     pnl=trade.net_pnl,
+                    realized_pnl=realized_pnl,
                     exit_reason=trade.exit_reason,
                 )
                 session.add(record)

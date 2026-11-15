@@ -59,7 +59,7 @@ class Fill:
 
 @dataclass(frozen=True)
 class Position:
-    """One open spot long position, with fixed stop and target."""
+    """One open position, with fixed stop, target, leverage, and liquidation."""
 
     signal: BreakoutSignal
     quantity: Decimal
@@ -67,6 +67,9 @@ class Position:
     stop_price: Decimal
     target_price: Decimal
     initial_risk: Decimal
+    leverage: int = 1
+    margin_used: Decimal = Decimal("0")
+    liquidation_price: Decimal = Decimal("0")
 
     @property
     def symbol(self) -> str:
@@ -75,6 +78,22 @@ class Position:
     @property
     def exchange(self) -> str:
         return self.signal.exchange
+
+    @property
+    def side(self) -> str:
+        return self.signal.side
+
+    @property
+    def direction(self) -> str:
+        return "LONG" if str(self.signal.side).lower() in ("long", "buy") else "SHORT"
+
+    @property
+    def stop_loss(self) -> Decimal:
+        return self.stop_price
+
+    @property
+    def take_profit(self) -> Decimal:
+        return self.target_price
 
 
 @dataclass(frozen=True)
@@ -88,6 +107,25 @@ class Trade:
     exit_reason: str
     gross_pnl: Decimal
     net_pnl: Decimal
+    leverage: int = 1
+    margin_used: Decimal = Decimal("0")
+    liquidation_price: Decimal = Decimal("0")
+
+    @property
+    def direction(self) -> str:
+        return "LONG" if str(self.signal.side).lower() in ("long", "buy") else "SHORT"
+
+    @property
+    def stop_loss(self) -> Decimal:
+        return self.stop_price
+
+    @property
+    def take_profit(self) -> Decimal:
+        return self.target_price
+
+    @property
+    def realized_pnl(self) -> Decimal:
+        return self.net_pnl
 
 
 @dataclass(frozen=True)

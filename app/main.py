@@ -343,7 +343,11 @@ async def main(
             minimum_quantity=Decimal("0.000001"),
             quantity_step=Decimal("0.000001"),
         )
-        executor = PaperExecutor(config)
+        executor = PaperExecutor(
+            config,
+            max_open_positions=1,
+            starting_cash=Decimal("100.00"),
+        )
         explainer = TradeExplainer()
         logging_handler = LoggingAlertHandler()
         db_handler = DatabaseAlertHandler()
@@ -365,6 +369,8 @@ async def main(
             eval_logger=eval_logger,
             btc_regime_filter=btc_regime_filter,
             data_provider=data_provider,
+            max_open_positions=1,
+            tracked_symbols=resolved_symbols,
         )
 
     set_dashboard_session(session)

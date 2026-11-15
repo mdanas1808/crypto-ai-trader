@@ -1,9 +1,18 @@
-"""Deterministic breakout strategy signals for prepared backtest data."""
+"""Deterministic breakout strategy signals for prepared backtest and live data.
+
+Evaluates bidirectional (Long and Short) breakout setups across tracked symbols.
+Scores signals by momentum strength (breakout distance normalized by ATR + volume surge ratio)
+and provides dynamic leverage (5x–10x) and explicit Entry, Stop-Loss, and Take-Profit bounds.
+"""
+
+from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Literal
+from decimal import Decimal
+from typing import Literal, Sequence
 
 import pandas as pd
 
@@ -16,20 +25,104 @@ class BreakoutSignal:
 
     exchange: str
     symbol: str
-    side: Literal["long"]
+    side: Literal["long", "short", "LONG", "SHORT"]
     decision_time: datetime
     signal_open_time: datetime
     atr_14: float
+    score: float = 0.0
+    entry_price: Decimal | None = None
+    stop_loss: Decimal | None = None
+    take_profit: Decimal | None = None
+    leverage: int = 1
+    margin_used: Decimal = Decimal("0")
+
+    @property
+    def direction(self) -> str:
+        return "LONG" if str(self.side).lower() in ("long", "buy") else "SHORT"
+
+
+def compute_dynamic_leverage(
+    atr: float | Decimal,
+    price: float | Decimal,
+    *,
+    default_leverage: int = 7,
+    min_leverage: int = 5,
+    max_leverage: int = 10,
+) -> int:
+    """Compute dynamic leverage between min_leverage (5x) and max_leverage (10x).
+
+    Higher ATR volatility relative to price scales leverage down towards min_leverage.
+    Strong trend alignment and lower volatility scale leverage up towards max_leverage.
+    Configurable via DEFAULT_LEVERAGE, MIN_LEVERAGE, MAX_LEVERAGE env vars.
+    """
+    try:
+        def_lev = int(os.getenv("DEFAULT_LEVERAGE", str(default_leverage)))
+        min_lev = int(os.getenv("MIN_LEVERAGE", str(min_leverage)))
+        max_lev = int(os.getenv("MAX_LEVERAGE", str(max_leverage)))
+        if min_lev > max_lev:
+            min_lev, max_lev = max_lev, min_lev
+    except Exception:
+        def_lev, min_lev, max_lev = 7, 5, 10
+
+    try:
+        atr_f = float(atr)
+        price_f = float(price)
+        if atr_f <= 0 or price_f <= 0:
+            return def_lev
+        vol_ratio = atr_f / price_f
+        # Reference bounds: 1.5% (low volatility/strong trend) -> max_leverage
+        #                   3.5% (high volatility)            -> min_leverage
+        if vol_ratio <= 0.015:
+            return max_lev
+        if vol_ratio >= 0.035:
+            return min_lev
+        ratio = (vol_ratio - 0.015) / (0.035 - 0.015)
+        lev = max_lev - ratio * (max_lev - min_lev)
+        return int(round(max(min_lev, min(max_lev, lev))))
+    except Exception:
+        return def_lev
+
+
+def score_signal(
+    side: str,
+    close: float,
+    reference_level: float,
+    atr: float,
+    volume: float,
+    volume_sma: float,
+) -> float:
+    """Score a breakout signal by momentum strength:
+
+    momentum strength = (breakout distance normalized by ATR) + volume surge ratio
+    """
+    if atr <= 0 or volume_sma <= 0:
+        return 0.0
+    if str(side).lower() == "long":
+        breakout_distance = max(0.0, close - reference_level)
+    else:
+        breakout_distance = max(0.0, reference_level - close)
+    normalized_distance = breakout_distance / atr
+    volume_surge_ratio = volume / volume_sma
+    return normalized_distance + volume_surge_ratio
+
+
+def pick_most_feasible_signal(signals: Sequence[BreakoutSignal]) -> BreakoutSignal | None:
+    """Pick ONLY the single highest-scoring setup ("most feasible trade")."""
+    if not signals:
+        return None
+    return max(signals, key=lambda s: getattr(s, "score", 0.0))
 
 
 def generate_breakout_signals(
     data: MultiTimeframeBacktestData,
+    *,
+    bidirectional: bool = True,
+    legacy_mode: bool = False,
 ) -> list[BreakoutSignal]:
-    """Evaluate trading rows in order and return qualifying long signals.
+    """Evaluate trading rows in order and return qualifying signals.
 
     Context rows supply history only and are never evaluated as candidates.
-    Numeric comparisons use float64 values, matching the indicator calculation
-    convention; input DataFrames and canonical Decimal values are not modified.
+    Evaluates both Long and Short setups across closed candles.
     """
     if not isinstance(data, MultiTimeframeBacktestData):
         raise TypeError("data must be MultiTimeframeBacktestData")
@@ -41,6 +134,7 @@ def generate_breakout_signals(
 
     _validate_timeline(context, "context_frame", context_required=True)
     _validate_timeline(trading, "trading_frame", context_required=False)
+
     required_trading = {
         "exchange",
         "symbol",
@@ -52,17 +146,23 @@ def generate_breakout_signals(
         "rsi_14",
         "volume_sma_20",
         "atr_14",
-        "4h_exchange",
-        "4h_symbol",
-        "4h_open_time",
-        "4h_completion_time",
-        "4h_close",
-        "4h_ema_20",
-        "4h_ema_50",
-        "4h_ema_200",
     }
+    if legacy_mode:
+        required_trading.update(
+            {
+                "4h_exchange",
+                "4h_symbol",
+                "4h_open_time",
+                "4h_completion_time",
+                "4h_close",
+                "4h_ema_20",
+                "4h_ema_50",
+                "4h_ema_200",
+            }
+        )
     _require_columns(trading, required_trading, "trading_frame")
     _require_columns(context, {"exchange", "symbol", "open_time", "high"}, "context_frame")
+
     if trading.empty:
         return []
 
@@ -82,6 +182,11 @@ def generate_breakout_signals(
     _validate_hourly_contiguity(combined_open_times)
 
     history_highs = [_finite_number(value) for value in context["high"]]
+    history_lows = (
+        [_finite_number(value) for value in context["low"]]
+        if "low" in context.columns
+        else [_finite_number(value) for value in context["high"]]
+    )
     signals: list[BreakoutSignal] = []
 
     for row_number in range(len(trading)):
@@ -95,13 +200,23 @@ def generate_breakout_signals(
             and (row["exchange"], row["symbol"]) == trading_identity
             and decision_utc == open_time + timedelta(hours=1)
         ):
-            candidate = _evaluate_candidate(row, decision_utc, open_time, history_highs)
+            candidate = _evaluate_candidate(
+                row,
+                decision_utc,
+                open_time,
+                history_highs,
+                history_lows,
+                bidirectional=bidirectional,
+                legacy_mode=legacy_mode,
+            )
             if candidate is not None:
                 signals.append(candidate)
 
         # Append only after evaluating the current row so it cannot enter its
         # own previous-20-candle breakout window.
         history_highs.append(_finite_number(row["high"]))
+        cur_low = row["low"] if "low" in row else row["high"]
+        history_lows.append(_finite_number(cur_low))
 
     return signals
 
@@ -111,12 +226,121 @@ def _evaluate_candidate(
     decision_time: datetime,
     open_time: datetime,
     history_highs: list[float | None],
+    history_lows: list[float | None],
+    *,
+    bidirectional: bool = True,
+    legacy_mode: bool = False,
 ) -> BreakoutSignal | None:
-    four_hour_open = _utc_timestamp(row["4h_open_time"])
-    four_hour_completion = _utc_timestamp(row["4h_completion_time"])
+    if legacy_mode:
+        return _evaluate_legacy_candidate(row, decision_time, open_time, history_highs)
+
+    values = {
+        name: _finite_number(row[name])
+        for name in (
+            "close",
+            "ema_200",
+            "rsi_14",
+            "volume",
+            "volume_sma_20",
+            "atr_14",
+        )
+    }
+    if any(value is None for value in values.values()):
+        return None
+
+    atr = values["atr_14"]
+    assert atr is not None
+    if atr <= 0:
+        return None
+
+    prior_highs = history_highs[-BREAKOUT_CONTEXT_CANDLES:]
+    prior_lows = history_lows[-BREAKOUT_CONTEXT_CANDLES:]
+    if (
+        len(prior_highs) != BREAKOUT_CONTEXT_CANDLES
+        or any(value is None for value in prior_highs)
+        or len(prior_lows) != BREAKOUT_CONTEXT_CANDLES
+        or any(value is None for value in prior_lows)
+    ):
+        return None
+
+    reference_high = max(value for value in prior_highs if value is not None)
+    reference_low = min(value for value in prior_lows if value is not None)
+
+    close = values["close"]
+    ema_200 = values["ema_200"]
+    rsi_14 = values["rsi_14"]
+    volume = values["volume"]
+    volume_sma_20 = values["volume_sma_20"]
+    assert all(value is not None for value in (close, ema_200, rsi_14, volume, volume_sma_20))
+
+    exchange = row["exchange"]
+    symbol = row["symbol"]
+    if not isinstance(exchange, str) or not exchange or not isinstance(symbol, str) or not symbol:
+        return None
+
+    # Long criteria: Close > 200 EMA, Close > 20-period High, Volume > 20-period Volume SMA, bullish RSI (> 52 and < 75)
+    is_long = (
+        close > ema_200
+        and close > reference_high
+        and volume > volume_sma_20
+        and 52.0 < rsi_14 < 75.0
+    )
+
+    # Short criteria: Close < 200 EMA, Close < 20-period Low, Volume > 20-period Volume SMA, bearish RSI (< 48 and > 25)
+    is_short = (
+        bidirectional
+        and close < ema_200
+        and close < reference_low
+        and volume > volume_sma_20
+        and 25.0 < rsi_14 < 48.0
+    )
+
+    if not is_long and not is_short:
+        return None
+
+    side: Literal["long", "short"] = "long" if is_long else "short"
+    ref_level = reference_high if is_long else reference_low
+    score = score_signal(side, close, ref_level, atr, volume, volume_sma_20)
+    leverage = compute_dynamic_leverage(atr, close)
+
+    entry_dec = Decimal(str(close))
+    atr_dec = Decimal(str(atr))
+    if is_long:
+        stop_loss = entry_dec - Decimal("1.5") * atr_dec
+        take_profit = entry_dec + Decimal("3.0") * atr_dec
+    else:
+        stop_loss = entry_dec + Decimal("1.5") * atr_dec
+        take_profit = entry_dec - Decimal("3.0") * atr_dec
+
+    if stop_loss <= Decimal("0") or take_profit <= Decimal("0"):
+        return None
+
+    return BreakoutSignal(
+        exchange=exchange,
+        symbol=symbol,
+        side=side,
+        decision_time=decision_time,
+        signal_open_time=open_time,
+        atr_14=atr,
+        score=score,
+        entry_price=entry_dec,
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+        leverage=leverage,
+    )
+
+
+def _evaluate_legacy_candidate(
+    row: pd.Series,
+    decision_time: datetime,
+    open_time: datetime,
+    history_highs: list[float | None],
+) -> BreakoutSignal | None:
+    four_hour_open = _utc_timestamp(row.get("4h_open_time"))
+    four_hour_completion = _utc_timestamp(row.get("4h_completion_time"))
     if four_hour_open is None or four_hour_completion is None:
         return None
-    if row["4h_exchange"] != row["exchange"] or row["4h_symbol"] != row["symbol"]:
+    if row.get("4h_exchange") != row["exchange"] or row.get("4h_symbol") != row["symbol"]:
         return None
     if four_hour_open + timedelta(hours=4) != four_hour_completion:
         return None
@@ -124,7 +348,7 @@ def _evaluate_candidate(
         return None
 
     values = {
-        name: _finite_number(row[name])
+        name: _finite_number(row.get(name))
         for name in (
             "close",
             "ema_200",
@@ -189,6 +413,14 @@ def _evaluate_candidate(
     symbol = row["symbol"]
     if not isinstance(exchange, str) or not exchange or not isinstance(symbol, str) or not symbol:
         return None
+
+    entry_dec = Decimal(str(close))
+    atr_dec = Decimal(str(atr))
+    stop_loss = entry_dec - Decimal("1.5") * atr_dec
+    take_profit = entry_dec + Decimal("3.0") * atr_dec
+    score = score_signal("long", close, reference_high, atr, volume, volume_sma_20)
+    leverage = compute_dynamic_leverage(atr, close)
+
     return BreakoutSignal(
         exchange=exchange,
         symbol=symbol,
@@ -196,6 +428,11 @@ def _evaluate_candidate(
         decision_time=decision_time,
         signal_open_time=open_time,
         atr_14=atr,
+        score=score,
+        entry_price=entry_dec,
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+        leverage=leverage,
     )
 
 

@@ -80,7 +80,11 @@ class PaperSession:
         btc_regime_filter: BtcRegimeFilter | Callable[[], bool | Awaitable[bool]] | None = None,
         wait_if_live: bool = False,
         executors: dict[str, PaperExecutor] | None = None,
+        max_open_positions: int = 1,
+        tracked_symbols: Sequence[str] | None = None,
     ) -> None:
+        self.max_open_positions = max_open_positions
+        self.tracked_symbols = list(tracked_symbols) if tracked_symbols is not None else None
         if executors is not None:
             self.executors = dict(executors)
         elif isinstance(executor, PaperExecutor):
@@ -141,23 +145,28 @@ class PaperSession:
         symbol: str,
         is_btc_bullish: bool,
         ai_approved: bool,
+        direction: str = "LONG",
     ) -> bool:
         """Evaluate submission eligibility for each isolated experiment variant."""
         is_core = symbol in FIXED_SYMBOLS
         is_btc_or_eth = symbol in ("BTCUSDT", "ETHUSDT")
         is_core_alt = is_core and not is_btc_or_eth
 
+        regime_aligned = (
+            is_btc_bullish if str(direction).upper() == "LONG" else (not is_btc_bullish)
+        )
+
         if variant_name == "variant_a":
             # Variant A: AI Gate + Regime Filter (Current)
             if is_core:
                 return True
-            return is_btc_bullish and ai_approved
+            return regime_aligned and ai_approved
 
         elif variant_name == "variant_b":
             # Variant B: Regime Filter only (No AI Gate)
             if is_core:
                 return True
-            return is_btc_bullish
+            return regime_aligned
 
         elif variant_name == "variant_c":
             # Variant C: AI Gate only (No Regime Filter)
@@ -171,12 +180,11 @@ class PaperSession:
 
         elif variant_name == "variant_e":
             # Variant E: AI Gate + Regime Filter applied to Core Alts too
-            # (SOL, BNB, ZEC blocked during BTC downtrend; only BTC/ETH untouched)
             if is_btc_or_eth:
                 return True
             if is_core_alt:
-                return is_btc_bullish
-            return is_btc_bullish and ai_approved
+                return regime_aligned
+            return regime_aligned and ai_approved
 
         return False
 
@@ -318,8 +326,9 @@ class PaperSession:
             except Exception as exc:
                 logger.warning("Failed to generate signal explanation: %s", exc)
                 return ""
+        dir_str = getattr(sig, "direction", "Long").title()
         return (
-            f"Breakout Long Signal for {sig.symbol} "
+            f"Breakout {dir_str} Signal for {sig.symbol} "
             f"({sig.exchange}) at {sig.decision_time.isoformat()}."
         )
 
@@ -327,15 +336,22 @@ class PaperSession:
         """Route a single market event to executor, strategy, and alert handlers."""
         if isinstance(event, CandleOpenObservation):
             positions: dict[str, Position] = {}
+            exited_trades: dict[str, Trade] = {}
             async with self._portfolio_lock:
                 for var_key, exec_inst in self.executors.items():
+                    trades_cnt_before = len(exec_inst.trades)
                     pos = exec_inst.on_open_observation(event)
                     if pos is not None:
                         positions[var_key] = pos
+                    elif len(exec_inst.trades) > trades_cnt_before:
+                        exited_trades[var_key] = exec_inst.trades[-1]
             position = positions.get("variant_a")
+            exit_trade = exited_trades.get("variant_a")
             self._events_processed += 1
             if position is not None and self.alert_handler is not None:
                 await self._notify("on_entry_filled", position)
+            if exit_trade is not None and self.alert_handler is not None:
+                await self._notify("on_exit_filled", exit_trade, "Exited at open observation")
             await self._check_daily_loss()
             return position
 
@@ -393,9 +409,30 @@ class PaperSession:
                     if self.alert_handler is not None:
                         await self._notify("on_exit_filled", trade, explanation)
 
-                signals, context_data = await self._generate_signals_with_context(event)
+                # Single-Trade State Machine: Only scan when no active position or pending signal exists
+                has_active_trade = (
+                    len(self.executor.positions) >= self.max_open_positions
+                    or len(self.executor.pending_signals) >= self.max_open_positions
+                )
+                if not has_active_trade:
+                    signals, context_data = await self._generate_signals_with_context(event)
+                    # Pick ONLY the single highest-scoring setup ("most feasible trade")
+                    if signals:
+                        best_sig = max(signals, key=lambda s: getattr(s, "score", 0.0))
+                        signals = [best_sig]
+                    else:
+                        signals = ()
+                else:
+                    signals = ()
+                    context_data = None
+
                 for sig in signals:
                     SUPPORTED_SYMBOLS.add(sig.symbol)
+                    sig_direction = getattr(
+                        sig,
+                        "direction",
+                        "LONG" if str(sig.side).lower() in ("long", "buy") else "SHORT",
+                    )
 
                     # 1. Determine BTC Regime Filter status
                     is_btc_bullish = True
@@ -404,6 +441,7 @@ class PaperSession:
                     regime_state = "UPTREND" if is_btc_bullish else "DOWNTREND"
                     try:
                         object.__setattr__(sig, "regime_state", regime_state)
+                        object.__setattr__(sig, "direction", sig_direction)
                     except Exception:
                         pass
 
@@ -581,6 +619,7 @@ class PaperSession:
                         symbol=sig.symbol,
                         is_btc_bullish=is_btc_bullish,
                         ai_approved=ai_approved,
+                        direction=sig_direction,
                     )
                     explanation = ""
                     if var_a_allowed:
@@ -610,6 +649,7 @@ class PaperSession:
                             symbol=sig.symbol,
                             is_btc_bullish=is_btc_bullish,
                             ai_approved=ai_approved,
+                            direction=sig_direction,
                         )
                         if should_sub:
                             var_sig = copy.copy(sig)
@@ -637,6 +677,7 @@ class PaperSession:
                         symbol=sig.symbol,
                         is_btc_bullish=is_btc_bullish,
                         ai_approved=ai_approved,
+                        direction=sig_direction,
                     )
                     is_core_alt = is_core and sig.symbol not in ("BTCUSDT", "ETHUSDT")
                     var_e_allowed = self._should_submit_to_variant(
@@ -644,6 +685,7 @@ class PaperSession:
                         symbol=sig.symbol,
                         is_btc_bullish=is_btc_bullish,
                         ai_approved=ai_approved,
+                        direction=sig_direction,
                     )
 
                     if not is_btc_bullish and (not is_core or (is_core_alt and not var_e_allowed)):
@@ -724,7 +766,42 @@ class PaperSession:
     async def _generate_signals_with_context(
         self, candle: Candle
     ) -> tuple[Sequence[BreakoutSignal], Any]:
-        """Generate strategy signals and return context data if available."""
+        """Generate strategy signals across tracked symbols and return context data if available."""
+        if self.tracked_symbols and self.data_provider is not None:
+            candidate_signals: list[BreakoutSignal] = []
+            chosen_context = None
+            for sym in self.tracked_symbols:
+                target_candle = (
+                    candle
+                    if sym == candle.symbol
+                    else Candle(
+                        exchange=candle.exchange,
+                        symbol=sym,
+                        interval=candle.interval,
+                        open_time=candle.open_time,
+                        open=candle.open,
+                        high=candle.high,
+                        low=candle.low,
+                        close=candle.close,
+                        volume=candle.volume,
+                    )
+                )
+                try:
+                    data = self.data_provider(target_candle)
+                    if inspect.iscoroutine(data):
+                        data = await data
+                    if data is not None:
+                        sigs = self.strategy(data)
+                        if inspect.iscoroutine(sigs):
+                            sigs = await sigs
+                        if sigs:
+                            candidate_signals.extend(sigs)
+                            if chosen_context is None:
+                                chosen_context = data
+                except Exception as exc:
+                    logger.debug("Failed scanning symbol %s: %s", sym, exc)
+            return candidate_signals, chosen_context
+
         if self.data_provider is not None:
             data = self.data_provider(candle)
             if inspect.iscoroutine(data):

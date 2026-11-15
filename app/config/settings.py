@@ -6,6 +6,10 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     database_url: str = "postgresql+psycopg://crypto:crypto@localhost:5432/crypto_trader"
+    default_leverage: int = 7
+    min_leverage: int = 5
+    max_leverage: int = 10
+    starting_capital: float = 100.0
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

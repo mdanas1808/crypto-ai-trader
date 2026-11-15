@@ -866,17 +866,24 @@
 
                 let html = '<div class="space-y-3">';
                 positions.forEach(pos => {
+                    const dir = (pos.direction || (pos.signal?.side?.toUpperCase()) || 'LONG').toUpperCase();
+                    const isShort = dir === 'SHORT';
+                    const lev = pos.leverage || 1;
                     html += `
                         <div class="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
                             <div class="flex items-center justify-between mb-1.5">
-                                <span class="font-bold text-white text-sm">${escapeHtml(pos.symbol)}</span>
-                                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400">LONG</span>
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-bold text-white text-sm">${escapeHtml(pos.symbol)}</span>
+                                    <span class="text-xs font-semibold px-2 py-0.5 rounded ${isShort ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}">${dir}</span>
+                                    <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">${lev}x FUTURES</span>
+                                </div>
+                                <span class="text-xs font-mono text-slate-400">Margin: $${formatNumber(pos.margin_used, 2)}</span>
                             </div>
                             <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300">
                                 <div><span class="text-slate-500">Entry:</span> ${formatNumber(pos.entry_fill?.price, 4)}</div>
                                 <div><span class="text-slate-500">Stop:</span> <span class="text-rose-400">${formatNumber(pos.stop_price, 4)}</span></div>
                                 <div><span class="text-slate-500">Target:</span> <span class="text-emerald-400">${formatNumber(pos.target_price, 4)}</span></div>
-                                <div><span class="text-slate-500">Size:</span> ${formatNumber(pos.quantity, 6)}</div>
+                                <div><span class="text-slate-500">Liq Price:</span> <span class="text-amber-400">${formatNumber(pos.liquidation_price, 4)}</span></div>
                             </div>
                         </div>
                     `;
@@ -913,11 +920,19 @@
 
                 let html = '<div class="space-y-3">';
                 signals.forEach(sig => {
+                    const dir = (sig.direction || (sig.side?.toUpperCase()) || 'LONG').toUpperCase();
+                    const isShort = dir === 'SHORT';
+                    const lev = sig.leverage || 1;
+                    const score = sig.score || 0;
                     html += `
                         <div class="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
                             <div class="flex items-center justify-between mb-1.5">
-                                <span class="font-bold text-white text-sm">${escapeHtml(sig.symbol)}</span>
-                                <span class="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400">PENDING ENTRY</span>
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-bold text-white text-sm">${escapeHtml(sig.symbol)}</span>
+                                    <span class="text-xs font-semibold px-2 py-0.5 rounded ${isShort ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}">${dir}</span>
+                                    <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">${lev}x</span>
+                                </div>
+                                <span class="text-xs font-mono text-indigo-400 font-semibold">Score: ${formatNumber(score, 2)}</span>
                             </div>
                             <div class="text-xs text-slate-400 flex justify-between">
                                 <span>ATR(14): ${formatNumber(sig.atr_14, 4)}</span>
@@ -959,16 +974,23 @@
 
                 let html = '<div class="space-y-3">';
                 trades.slice().reverse().forEach(t => {
-                    const netPnl = parseFloat(t.net_pnl);
+                    const netPnl = parseFloat(t.net_pnl || t.realized_pnl || 0);
                     const isProfit = netPnl >= 0;
+                    const dir = (t.direction || (t.signal?.side?.toUpperCase()) || 'LONG').toUpperCase();
+                    const isShort = dir === 'SHORT';
+                    const lev = t.leverage || 1;
                     html += `
                         <div class="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
                             <div class="flex items-center justify-between mb-1.5">
-                                <span class="font-bold text-white text-sm">${escapeHtml(t.symbol)}</span>
+                                <div class="flex items-center space-x-2">
+                                    <span class="font-bold text-white text-sm">${escapeHtml(t.symbol)}</span>
+                                    <span class="text-xs font-semibold px-2 py-0.5 rounded ${isShort ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}">${dir}</span>
+                                    <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">${lev}x</span>
+                                </div>
                                 <span class="font-mono font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}">${isProfit ? '+' : ''}$${formatNumber(netPnl, 4)} USDT</span>
                             </div>
                             <div class="text-xs text-slate-400 flex justify-between">
-                                <span>Exit: ${escapeHtml(t.exit_reason)}</span>
+                                <span>Exit: <span class="text-slate-200 font-semibold">${escapeHtml(t.exit_reason)}</span></span>
                                 <span>Closed: ${formatDateTime(t.exit_fill?.timestamp)}</span>
                             </div>
                             ${t.explanation ? `<div class="mt-2 text-xs text-slate-300 bg-slate-900 p-2 rounded">${escapeHtml(t.explanation)}</div>` : ''}

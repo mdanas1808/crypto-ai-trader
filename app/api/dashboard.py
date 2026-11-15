@@ -76,6 +76,12 @@ class SignalResponse(BaseModel):
     atr_14: float
     explanation: str | None = None
     status: str | None = None
+    direction: str = "LONG"
+    leverage: int = 1
+    margin_used: Decimal = Decimal("0")
+    stop_loss: Decimal | None = None
+    take_profit: Decimal | None = None
+    score: float = 0.0
 
     @classmethod
     def from_signal(cls, signal: BreakoutSignal) -> SignalResponse:
@@ -88,6 +94,16 @@ class SignalResponse(BaseModel):
             atr_14=signal.atr_14,
             explanation=getattr(signal, "explanation", None),
             status=getattr(signal, "status", "PENDING"),
+            direction=getattr(
+                signal,
+                "direction",
+                "LONG" if str(signal.side).lower() in ("long", "buy") else "SHORT",
+            ),
+            leverage=int(getattr(signal, "leverage", 1) or 1),
+            margin_used=Decimal(str(getattr(signal, "margin_used", Decimal("0")) or "0")),
+            stop_loss=Decimal(str(getattr(signal, "stop_loss", Decimal("0")) or "0")),
+            take_profit=Decimal(str(getattr(signal, "take_profit", Decimal("0")) or "0")),
+            score=float(getattr(signal, "score", 0.0) or 0.0),
         )
 
 
@@ -102,6 +118,12 @@ class PositionResponse(BaseModel):
     target_price: Decimal
     initial_risk: Decimal
     signal: SignalResponse
+    direction: str = "LONG"
+    leverage: int = 1
+    margin_used: Decimal = Decimal("0")
+    liquidation_price: Decimal = Decimal("0")
+    stop_loss: Decimal = Decimal("0")
+    take_profit: Decimal = Decimal("0")
 
     @classmethod
     def from_position(cls, position: Position) -> PositionResponse:
@@ -114,6 +136,18 @@ class PositionResponse(BaseModel):
             target_price=position.target_price,
             initial_risk=position.initial_risk,
             signal=SignalResponse.from_signal(position.signal),
+            direction=getattr(
+                position,
+                "direction",
+                "LONG" if str(position.signal.side).lower() in ("long", "buy") else "SHORT",
+            ),
+            leverage=int(getattr(position, "leverage", 1) or 1),
+            margin_used=Decimal(str(getattr(position, "margin_used", Decimal("0")) or "0")),
+            liquidation_price=Decimal(
+                str(getattr(position, "liquidation_price", Decimal("0")) or "0")
+            ),
+            stop_loss=getattr(position, "stop_loss", position.stop_price),
+            take_profit=getattr(position, "take_profit", position.target_price),
         )
 
 
@@ -132,6 +166,13 @@ class TradeResponse(BaseModel):
     net_pnl: Decimal
     signal: SignalResponse
     explanation: str | None = None
+    direction: str = "LONG"
+    leverage: int = 1
+    margin_used: Decimal = Decimal("0")
+    liquidation_price: Decimal = Decimal("0")
+    stop_loss: Decimal = Decimal("0")
+    take_profit: Decimal = Decimal("0")
+    realized_pnl: Decimal = Decimal("0")
 
     @classmethod
     def from_trade(cls, trade: Trade) -> TradeResponse:
@@ -148,6 +189,19 @@ class TradeResponse(BaseModel):
             net_pnl=trade.net_pnl,
             signal=SignalResponse.from_signal(trade.signal),
             explanation=getattr(trade, "explanation", None),
+            direction=getattr(
+                trade,
+                "direction",
+                "LONG" if str(trade.signal.side).lower() in ("long", "buy") else "SHORT",
+            ),
+            leverage=int(getattr(trade, "leverage", 1) or 1),
+            margin_used=Decimal(str(getattr(trade, "margin_used", Decimal("0")) or "0")),
+            liquidation_price=Decimal(
+                str(getattr(trade, "liquidation_price", Decimal("0")) or "0")
+            ),
+            stop_loss=getattr(trade, "stop_loss", trade.stop_price),
+            take_profit=getattr(trade, "take_profit", trade.target_price),
+            realized_pnl=getattr(trade, "realized_pnl", trade.net_pnl),
         )
 
 
