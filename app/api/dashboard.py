@@ -82,6 +82,7 @@ class SignalResponse(BaseModel):
     stop_loss: Decimal | None = None
     take_profit: Decimal | None = None
     score: float = 0.0
+    entry_price: Decimal | None = None
 
     @classmethod
     def from_signal(cls, signal: BreakoutSignal) -> SignalResponse:
@@ -104,6 +105,7 @@ class SignalResponse(BaseModel):
             stop_loss=Decimal(str(getattr(signal, "stop_loss", Decimal("0")) or "0")),
             take_profit=Decimal(str(getattr(signal, "take_profit", Decimal("0")) or "0")),
             score=float(getattr(signal, "score", 0.0) or 0.0),
+            entry_price=getattr(signal, "entry_price", None),
         )
 
 
@@ -124,9 +126,35 @@ class PositionResponse(BaseModel):
     liquidation_price: Decimal = Decimal("0")
     stop_loss: Decimal = Decimal("0")
     take_profit: Decimal = Decimal("0")
+    current_price: Decimal = Decimal("0")
+    notional: Decimal = Decimal("0")
+    unrealized_pnl: Decimal = Decimal("0")
+    unrealized_pnl_pct: Decimal = Decimal("0")
 
     @classmethod
-    def from_position(cls, position: Position) -> PositionResponse:
+    def from_position(
+        cls,
+        position: Position,
+        mark_price: Decimal | None = None,
+    ) -> PositionResponse:
+        entry_price = position.entry_fill.price
+        curr_price = mark_price if mark_price is not None else entry_price
+        qty = position.quantity
+        notional = curr_price * qty
+        direction = getattr(
+            position,
+            "direction",
+            "LONG" if str(position.signal.side).lower() in ("long", "buy") else "SHORT",
+        )
+        margin = Decimal(str(getattr(position, "margin_used", Decimal("0")) or "0"))
+
+        if str(direction).upper() == "LONG":
+            u_pnl = (curr_price - entry_price) * qty
+        else:
+            u_pnl = (entry_price - curr_price) * qty
+
+        u_pct = (u_pnl / margin * Decimal("100")) if margin > Decimal("0") else Decimal("0")
+
         return cls(
             symbol=position.symbol,
             exchange=position.exchange,
@@ -136,18 +164,18 @@ class PositionResponse(BaseModel):
             target_price=position.target_price,
             initial_risk=position.initial_risk,
             signal=SignalResponse.from_signal(position.signal),
-            direction=getattr(
-                position,
-                "direction",
-                "LONG" if str(position.signal.side).lower() in ("long", "buy") else "SHORT",
-            ),
+            direction=direction,
             leverage=int(getattr(position, "leverage", 1) or 1),
-            margin_used=Decimal(str(getattr(position, "margin_used", Decimal("0")) or "0")),
+            margin_used=margin,
             liquidation_price=Decimal(
                 str(getattr(position, "liquidation_price", Decimal("0")) or "0")
             ),
             stop_loss=getattr(position, "stop_loss", position.stop_price),
             take_profit=getattr(position, "take_profit", position.target_price),
+            current_price=curr_price,
+            notional=notional,
+            unrealized_pnl=u_pnl,
+            unrealized_pnl_pct=u_pct,
         )
 
 
@@ -173,9 +201,25 @@ class TradeResponse(BaseModel):
     stop_loss: Decimal = Decimal("0")
     take_profit: Decimal = Decimal("0")
     realized_pnl: Decimal = Decimal("0")
+    realized_pnl_pct: Decimal = Decimal("0")
+    notional: Decimal = Decimal("0")
 
     @classmethod
     def from_trade(cls, trade: Trade) -> TradeResponse:
+        direction = getattr(
+            trade,
+            "direction",
+            "LONG" if str(trade.signal.side).lower() in ("long", "buy") else "SHORT",
+        )
+        margin = Decimal(str(getattr(trade, "margin_used", Decimal("0")) or "0"))
+        realized = getattr(trade, "realized_pnl", trade.net_pnl)
+        pnl_pct = (
+            (Decimal(str(realized)) / margin * Decimal("100"))
+            if margin > Decimal("0")
+            else Decimal("0")
+        )
+        notional = trade.entry_fill.price * trade.quantity
+
         return cls(
             symbol=trade.signal.symbol,
             exchange=trade.signal.exchange,
@@ -189,19 +233,17 @@ class TradeResponse(BaseModel):
             net_pnl=trade.net_pnl,
             signal=SignalResponse.from_signal(trade.signal),
             explanation=getattr(trade, "explanation", None),
-            direction=getattr(
-                trade,
-                "direction",
-                "LONG" if str(trade.signal.side).lower() in ("long", "buy") else "SHORT",
-            ),
+            direction=direction,
             leverage=int(getattr(trade, "leverage", 1) or 1),
-            margin_used=Decimal(str(getattr(trade, "margin_used", Decimal("0")) or "0")),
+            margin_used=margin,
             liquidation_price=Decimal(
                 str(getattr(trade, "liquidation_price", Decimal("0")) or "0")
             ),
             stop_loss=getattr(trade, "stop_loss", trade.stop_price),
             take_profit=getattr(trade, "take_profit", trade.target_price),
-            realized_pnl=getattr(trade, "realized_pnl", trade.net_pnl),
+            realized_pnl=realized,
+            realized_pnl_pct=pnl_pct,
+            notional=notional,
         )
 
 
@@ -212,6 +254,11 @@ class PortfolioResponse(BaseModel):
     equity: Decimal
     open_risk: Decimal
     daily_loss_breached: bool
+    starting_cash: Decimal = Decimal("100.00")
+    realized_pnl: Decimal = Decimal("0.00")
+    unrealized_pnl: Decimal = Decimal("0.00")
+    total_pnl: Decimal = Decimal("0.00")
+    total_pnl_pct: Decimal = Decimal("0.00")
 
 
 class EquityPointResponse(BaseModel):
@@ -989,21 +1036,41 @@ def create_dashboard_router(
         portfolio = getattr(executor, "portfolio", None)
         marks = getattr(executor, "_marks", {})
 
-        cash = getattr(executor, "cash", Decimal("0"))
+        cash = getattr(executor, "cash", Decimal("100.00"))
         if portfolio is not None:
             equity = portfolio.equity(marks)
             open_risk = portfolio.open_risk
             daily_loss_breached = portfolio.daily_loss_breached
+            starting_cash = getattr(portfolio, "starting_cash", Decimal("100.00"))
         else:
             equity = getattr(executor, "equity", cash)
             open_risk = getattr(executor, "open_risk", Decimal("0"))
             daily_loss_breached = getattr(executor, "daily_loss_breached", False)
+            starting_cash = Decimal("100.00")
+
+        unrealized_pnl = equity - cash
+        trades = getattr(executor, "trades", ())
+        realized_pnl = sum(
+            (Decimal(str(getattr(t, "realized_pnl", getattr(t, "net_pnl", 0)))) for t in trades),
+            Decimal("0"),
+        )
+        total_pnl = equity - starting_cash
+        total_pnl_pct = (
+            (total_pnl / starting_cash * Decimal("100"))
+            if starting_cash > Decimal("0")
+            else Decimal("0")
+        )
 
         return PortfolioResponse(
             cash=cash,
             equity=equity,
             open_risk=open_risk,
             daily_loss_breached=daily_loss_breached,
+            starting_cash=starting_cash,
+            realized_pnl=realized_pnl,
+            unrealized_pnl=unrealized_pnl,
+            total_pnl=total_pnl,
+            total_pnl_pct=total_pnl_pct,
         )
 
     @router.get("/positions", response_model=list[PositionResponse])
@@ -1013,7 +1080,8 @@ def create_dashboard_router(
         executor = _resolve_executor(session)
         positions = getattr(executor, "positions", {})
         pos_list = list(positions.values()) if isinstance(positions, dict) else list(positions)
-        return [PositionResponse.from_position(p) for p in pos_list]
+        marks = getattr(executor, "_marks", {})
+        return [PositionResponse.from_position(p, mark_price=marks.get(p.symbol)) for p in pos_list]
 
     @router.get("/trades", response_model=list[TradeResponse])
     def get_trades(
@@ -1026,13 +1094,21 @@ def create_dashboard_router(
     @router.get("/signals", response_model=list[SignalResponse])
     def get_signals(
         session: Any = Depends(_get_target_session),
+        all_signals: bool = Query(True, description="Include recent evaluated signals"),
     ) -> list[SignalResponse]:
-        signals = getattr(session, "pending_signals", None)
-        if signals is None:
+        pending = getattr(session, "pending_signals", None)
+        if pending is None:
             executor = _resolve_executor(session)
-            signals = getattr(executor, "pending_signals", ())
+            pending = getattr(executor, "pending_signals", ())
         vetoed = getattr(session, "vetoed_signals", ())
-        combined = list(signals) + list(vetoed)
+        combined = list(pending) + list(vetoed)
+        if all_signals:
+            recent = getattr(session, "recent_signals", ())
+            seen = {(s.symbol, s.decision_time) for s in combined}
+            for s in recent:
+                if (s.symbol, s.decision_time) not in seen:
+                    seen.add((s.symbol, s.decision_time))
+                    combined.append(s)
         return [SignalResponse.from_signal(s) for s in combined]
 
     # New 5-Variant Experiment Endpoints

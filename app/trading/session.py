@@ -123,6 +123,7 @@ class PaperSession:
         self._signals_submitted = 0
         self._daily_loss_notified = False
         self._vetoed_signals: list[BreakoutSignal] = []
+        self._recent_signals: list[BreakoutSignal] = []
         self._portfolio_lock = asyncio.Lock()
         self._entry_eval_cache: dict[tuple[str, Any], tuple[bool, str, dict[str, Any], Any]] = {}
         self._position_review_cache: dict[
@@ -249,6 +250,10 @@ class PaperSession:
         return tuple(self._vetoed_signals)
 
     @property
+    def recent_signals(self) -> tuple[BreakoutSignal, ...]:
+        return tuple(self._recent_signals)
+
+    @property
     def review_task(self) -> asyncio.Task[None] | None:
         return self._review_task
 
@@ -348,8 +353,18 @@ class PaperSession:
             position = positions.get("variant_a")
             exit_trade = exited_trades.get("variant_a")
             self._events_processed += 1
-            if position is not None and self.alert_handler is not None:
-                await self._notify("on_entry_filled", position)
+            if position is not None:
+                for s in self._recent_signals:
+                    if (
+                        s.symbol == position.symbol
+                        and s.decision_time == position.signal.decision_time
+                    ):
+                        try:
+                            object.__setattr__(s, "status", "EXECUTED")
+                        except Exception:
+                            pass
+                if self.alert_handler is not None:
+                    await self._notify("on_entry_filled", position)
             if exit_trade is not None and self.alert_handler is not None:
                 await self._notify("on_exit_filled", exit_trade, "Exited at open observation")
             await self._check_daily_loss()
@@ -419,6 +434,19 @@ class PaperSession:
                     # Pick ONLY the single highest-scoring setup ("most feasible trade")
                     if signals:
                         best_sig = max(signals, key=lambda s: getattr(s, "score", 0.0))
+                        try:
+                            object.__setattr__(best_sig, "status", "PENDING")
+                        except Exception:
+                            pass
+                        for s in signals:
+                            if s is not best_sig:
+                                try:
+                                    object.__setattr__(s, "status", "SKIPPED")
+                                except Exception:
+                                    pass
+                            self._recent_signals.append(s)
+                        if len(self._recent_signals) > 50:
+                            self._recent_signals = self._recent_signals[-50:]
                         signals = [best_sig]
                     else:
                         signals = ()

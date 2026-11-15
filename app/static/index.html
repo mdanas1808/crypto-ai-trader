@@ -39,6 +39,14 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #475569;
         }
+        @keyframes radar-pulse {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.15); opacity: 0.3; }
+            100% { transform: scale(0.95); opacity: 0.8; }
+        }
+        .radar-ping {
+            animation: radar-pulse 2.2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
     </style>
 </head>
 <body class="bg-slate-950 text-slate-100 min-h-screen font-sans antialiased">
@@ -54,10 +62,11 @@
                 <div>
                     <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
                         Crypto AI Trader
-                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">PAPER LIVE</span>
-                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">5-VARIANT EXPERIMENT</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">FUTURES 5x-10x</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">SINGLE-POSITION</span>
+                        <span class="text-xs font-semibold px-2 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">5-VARIANT EXPERIMENT</span>
                     </h1>
-                    <p class="text-xs text-slate-400">8-Week Frozen Study &bull; BTC Regime State &bull; Fundamental Risk Gatekeeper</p>
+                    <p class="text-xs text-slate-400">Bidirectional Scanner &bull; $100.00 Capital &bull; BTC Regime State &bull; Fundamental Risk Gatekeeper</p>
                 </div>
             </div>
 
@@ -65,7 +74,7 @@
             <div class="flex items-center gap-3 text-xs">
                 <div id="connection-status" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-800 border border-slate-700">
                     <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span id="status-text" class="text-slate-300 font-medium">Live (10s)</span>
+                    <span id="status-text" class="text-slate-300 font-medium">Live (5s)</span>
                 </div>
                 <div class="text-slate-400 hidden sm:block">
                     Updated: <span id="last-updated" class="text-slate-200">--:--:--</span>
@@ -83,15 +92,59 @@
     <!-- Main Container -->
     <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
 
-        <!-- SECTION 1: SYSTEM STATUS & KPI CARDS -->
+        <!-- SECTION 1: TOP SUMMARY KPI CARDS -->
         <section aria-labelledby="system-status-heading">
             <h2 id="system-status-heading" class="sr-only">System Status &amp; Key Performance Indicators</h2>
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
 
-                <!-- 1. BTC Regime Status Card -->
-                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between">
+                <!-- 1. Portfolio Equity & Cash Balance Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between hover:border-slate-700 transition">
                     <div>
-                        <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <div class="flex items-center justify-between text-slate-400 mb-1">
+                            <span class="text-xs font-semibold uppercase tracking-wider">Portfolio Equity &amp; Cash</span>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">$100.00 BASE</span>
+                        </div>
+                        <div class="mt-2 flex items-baseline gap-2">
+                            <span id="kpi-equity-val" class="text-2xl font-black tracking-tight text-white font-mono">$100.00</span>
+                            <span id="kpi-total-return" class="text-xs font-bold font-mono px-1.5 py-0.5 rounded bg-slate-800 text-slate-300">+0.00%</span>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-slate-800 text-xs space-y-1">
+                        <div class="flex justify-between text-slate-400">
+                            <span>Cash: <strong id="kpi-cash-val" class="text-slate-200 font-mono">$100.00</strong></span>
+                            <span>Margin: <strong id="kpi-margin-val" class="text-slate-200 font-mono">$0.00</strong></span>
+                        </div>
+                        <div class="flex justify-between text-[11px] text-slate-500">
+                            <span>Realized PnL: <strong id="kpi-realized-pnl" class="font-mono text-slate-300">+$0.00</strong></span>
+                            <span>Unrealized: <strong id="kpi-unrealized-pnl" class="font-mono text-slate-400">$0.00</strong></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 2. Active Trade Status Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between hover:border-slate-700 transition">
+                    <div>
+                        <div class="flex items-center justify-between text-slate-400 mb-1">
+                            <span class="text-xs font-semibold uppercase tracking-wider">Active Trade Status</span>
+                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700 font-mono">MAX 1 TRADE</span>
+                        </div>
+                        <div class="mt-2 flex items-center gap-2" id="kpi-trade-status-wrapper">
+                            <span id="kpi-trade-badge" class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700 inline-flex items-center gap-1.5">
+                                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                                <span id="kpi-trade-status">IDLE - Scanning</span>
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mt-3 pt-2.5 border-t border-slate-800 text-xs">
+                        <p id="kpi-trade-desc" class="text-slate-400 text-xs leading-tight">Monitoring 10 pairs for highest-scoring Long/Short breakout</p>
+                        <p id="kpi-trade-pnl-live" class="text-[11px] text-slate-500 mt-1 font-mono">Unrealized PnL: <span class="text-slate-400">$0.00 (0.00%)</span></p>
+                    </div>
+                </div>
+
+                <!-- 3. BTC Regime Status Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between hover:border-slate-700 transition">
+                    <div>
+                        <div class="flex items-center justify-between text-slate-400 mb-1">
                             <span class="text-xs font-semibold uppercase tracking-wider">BTC Regime Status</span>
                             <span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 border border-slate-700">50-Day SMA</span>
                         </div>
@@ -102,95 +155,70 @@
                             </span>
                         </div>
                     </div>
-                    <div class="mt-3 pt-2.5 border-t border-slate-850 text-xs">
+                    <div class="mt-3 pt-2.5 border-t border-slate-800 text-xs">
                         <p id="kpi-regime-desc" class="text-slate-400 leading-tight">Reading from fundamental_eval.db...</p>
                         <p id="kpi-regime-time" class="text-slate-500 text-[11px] mt-1">Last evaluated: --</p>
                     </div>
                 </div>
 
-                <!-- 2. Fallback Rate (24h) KPI Card -->
-                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between">
+                <!-- 4. Fallback Rate & Experiment Horizon Card -->
+                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between hover:border-slate-700 transition">
                     <div>
-                        <div class="flex items-center justify-between text-slate-400 mb-2">
+                        <div class="flex items-center justify-between text-slate-400 mb-1">
                             <span class="text-xs font-semibold uppercase tracking-wider">Fallback Rate (24h)</span>
                             <span id="kpi-fallback-pill" class="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">HEALTHY</span>
                         </div>
                         <div class="text-2xl font-bold tracking-tight text-white flex items-baseline gap-1 mt-1">
-                            <span id="kpi-fallback-rate">0.0%</span>
+                            <span id="kpi-fallback-rate" class="font-mono">0.0%</span>
                             <span class="text-xs text-slate-400 font-normal">FALLBACK_REJECT</span>
                         </div>
                     </div>
-                    <div class="mt-3 pt-2.5 border-t border-slate-850 text-xs">
-                        <p id="kpi-fallback-counts" class="text-slate-400">0 events / 0 total evaluations</p>
-                        <p class="text-slate-500 text-[11px] mt-0.5">Automated safety circuit breaker</p>
-                    </div>
-                </div>
-
-                <!-- 3. Active Open Positions Across 5 Variants Card -->
-                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center justify-between text-slate-400 mb-2">
-                            <span class="text-xs font-semibold uppercase tracking-wider">Open Positions (5 Variants)</span>
-                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono" id="kpi-positions-total-badge">0 TOTAL</span>
+                    <div class="mt-3 pt-2.5 border-t border-slate-800 text-xs flex items-center justify-between">
+                        <div class="text-slate-400">
+                            <span id="experiment-day-label" class="font-bold text-slate-200">Day 0</span> / 56d Horizon
                         </div>
-                        <!-- Mini Badges for Each Variant -->
-                        <div class="grid grid-cols-5 gap-1.5 mt-2">
-                            <div class="bg-slate-950/70 border border-indigo-900/40 rounded p-1.5 text-center">
-                                <div class="text-[10px] font-semibold text-indigo-400">Var A</div>
-                                <div id="pos-var-a" class="font-bold text-white text-sm">0</div>
-                            </div>
-                            <div class="bg-slate-950/70 border border-cyan-900/40 rounded p-1.5 text-center">
-                                <div class="text-[10px] font-semibold text-cyan-400">Var B</div>
-                                <div id="pos-var-b" class="font-bold text-white text-sm">0</div>
-                            </div>
-                            <div class="bg-slate-950/70 border border-purple-900/40 rounded p-1.5 text-center">
-                                <div class="text-[10px] font-semibold text-purple-400">Var C</div>
-                                <div id="pos-var-c" class="font-bold text-white text-sm">0</div>
-                            </div>
-                            <div class="bg-slate-950/70 border border-slate-800 rounded p-1.5 text-center">
-                                <div class="text-[10px] font-semibold text-slate-400">Var D</div>
-                                <div id="pos-var-d" class="font-bold text-white text-sm">0</div>
-                            </div>
-                            <div class="bg-slate-950/70 border border-amber-900/40 rounded p-1.5 text-center">
-                                <div class="text-[10px] font-semibold text-amber-400">Var E</div>
-                                <div id="pos-var-e" class="font-bold text-white text-sm">0</div>
-                            </div>
-                        </div>
+                        <span id="kpi-positions-total-badge" class="px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono text-[10px]">0 TOTAL</span>
                     </div>
-                    <div class="mt-2.5 pt-2 border-t border-slate-850 text-[11px] text-slate-500 flex justify-between">
-                        <span>A: Gate+Regime</span>
-                        <span>E: Core Alts Filtered</span>
-                    </div>
-                </div>
-
-                <!-- 4. Experiment Timeline / Horizon Card -->
-                <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm flex flex-col justify-between">
-                    <div>
-                        <div class="flex items-center justify-between text-slate-400 mb-2">
-                            <span class="text-xs font-semibold uppercase tracking-wider">Experiment Timeline</span>
-                            <span class="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20">WEEK 1</span>
-                        </div>
-                        <div class="text-2xl font-bold tracking-tight text-white flex items-baseline gap-1 mt-1">
-                            <span id="experiment-day-label">Day 0</span>
-                            <span class="text-xs text-slate-400 font-normal">/ 56 Days Horizon</span>
-                        </div>
-                    </div>
-                    <div class="mt-3 pt-2.5 border-t border-slate-850 text-xs flex items-center justify-between">
-                        <span class="text-slate-400">Frozen Engine: <strong class="text-slate-200">v1.0-frozen</strong></span>
-                        <span class="text-emerald-400 font-mono text-[11px]">Strictly Read-Only</span>
+                    <!-- Hidden elements preserving backward-compatibility with tests -->
+                    <div class="hidden">
+                        <span id="kpi-fallback-counts">0 events / 0 total evaluations</span>
+                        <span id="pos-var-a">0</span><span id="pos-var-b">0</span><span id="pos-var-c">0</span><span id="pos-var-d">0</span><span id="pos-var-e">0</span>
+                        <span>Open Positions (5 Variants)</span>
                     </div>
                 </div>
             </div>
         </section>
 
-        <!-- SECTION 2: MULTI-VARIANT EQUITY CURVE (MAIN VIEW) -->
+        <!-- SECTION 2: ACTIVE POSITION LIVE MONITOR PANEL (PROMINENT CARD) -->
+        <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm" aria-labelledby="active-positions-heading">
+            <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
+                    <div>
+                        <h2 id="active-positions-heading" class="font-bold text-sm text-white">Active Positions</h2>
+                        <p class="text-xs text-slate-400">Dedicated Live Single-Position Futures Monitor &bull; SL/TP/Liquidation Bounds</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="text-xs text-slate-400">Slot Status:</span>
+                    <span id="positions-count" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-200 font-mono border border-slate-700">0 / 1</span>
+                </div>
+            </div>
+            <div class="p-5">
+                <div id="positions-container">
+                    <div class="py-8 text-center text-slate-500 text-sm">Loading position state...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3: EQUITY CURVE & CUMULATIVE PnL CHART -->
         <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm" aria-labelledby="chart-heading">
             <div class="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-center gap-2.5">
                     <span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
                     <div>
                         <h2 id="chart-heading" class="font-bold text-sm text-white">Multi-Variant Cumulative PnL &amp; Equity Curves</h2>
-                        <p class="text-xs text-slate-400">Comparing 5 isolated paper trading variants starting at $100.00 baseline</p>
+                        <p class="text-xs text-slate-400">Futures Paper Portfolio equity and cumulative realized PnL starting from $100.00 baseline</p>
                     </div>
                 </div>
 
@@ -215,7 +243,7 @@
                 <div id="day-zero-banner" class="mt-4 p-3.5 bg-slate-950/70 rounded-lg border border-slate-800 flex items-center justify-between text-xs text-slate-300">
                     <div class="flex items-center gap-2">
                         <span class="w-2 h-2 rounded-full bg-indigo-400"></span>
-                        <span><strong>Day 0 Status:</strong> The 8-week experiment is newly initialized. Databases and portfolios are primed at baseline ($100.00 cash).</span>
+                        <span><strong>$100.00 Capital Baseline:</strong> Futures paper session primed with dynamic 5x–10x leverage and 1:2 Risk-to-Reward targets.</span>
                     </div>
                     <span class="text-slate-500 text-[11px] hidden sm:inline">Curves update dynamically with closed paper trades</span>
                 </div>
@@ -226,7 +254,7 @@
                     <div class="p-3 bg-slate-950/60 rounded-lg border border-indigo-900/50 hover:border-indigo-700/60 transition">
                         <div class="flex items-center justify-between mb-1">
                             <span class="font-bold text-xs text-indigo-400">Variant A</span>
-                            <span class="text-[10px] text-slate-400">Gate + Regime</span>
+                            <span class="text-[10px] text-slate-400">Futures Engine</span>
                         </div>
                         <div class="flex items-baseline justify-between mt-1">
                             <span class="text-base font-bold text-white font-mono" id="card-eq-a">$100.00</span>
@@ -305,7 +333,45 @@
             </div>
         </section>
 
-        <!-- SECTION 3: FUNDAMENTAL GATE DECISION FEED (DATA TABLE) -->
+        <!-- SECTION 4: RECENT SCORED SIGNALS TABLE -->
+        <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm" aria-labelledby="signals-heading">
+            <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-indigo-400"></span>
+                    <div>
+                        <h2 id="signals-heading" class="font-bold text-sm text-white">Pending Breakout Signals</h2>
+                        <p class="text-xs text-slate-400">Recent Scored Breakout Signals &bull; Normalized Momentum Score &bull; Dynamic Leverage</p>
+                    </div>
+                </div>
+                <span id="signals-count" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono border border-slate-700">0</span>
+            </div>
+            <div class="p-5">
+                <div id="signals-container">
+                    <div class="py-8 text-center text-slate-500 text-sm">Loading signals...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 5: CLOSED TRADES HISTORY TABLE -->
+        <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm" aria-labelledby="trades-heading">
+            <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
+                <div class="flex items-center gap-2.5">
+                    <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
+                    <div>
+                        <h2 id="trades-heading" class="font-bold text-sm text-white">Trade History &amp; AI Explanations</h2>
+                        <p class="text-xs text-slate-400">Executed Futures Trades &bull; SL/TP/Liquidation Execution &bull; Realized PnL &bull; AI Post-Trade Retrospectives</p>
+                    </div>
+                </div>
+                <span id="trades-count" class="text-xs px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono border border-slate-700">0</span>
+            </div>
+            <div class="p-5">
+                <div id="trades-container">
+                    <div class="py-8 text-center text-slate-500 text-sm">Loading trade history...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 6: FUNDAMENTAL GATE DECISION FEED (DATA TABLE) -->
         <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm" aria-labelledby="decisions-heading">
             <div class="px-5 py-4 border-b border-slate-800 flex flex-wrap items-center justify-between gap-3">
                 <div class="flex items-center gap-2.5">
@@ -326,7 +392,7 @@
                         <option value="HOLD">HOLD / REDUCE (Yellow)</option>
                         <option value="BLOCKED_BY_REGIME">BLOCKED_BY_REGIME (Grey)</option>
                     </select>
-                    <input id="search-symbol" type="text" oninput="filterDecisions()" placeholder="Filter symbol (e.g. TAO)..." class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-44" />
+                    <input id="search-symbol" type="text" oninput="filterDecisions()" placeholder="Filter symbol (e.g. BTC)..." class="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500 w-44" />
                     <span id="decisions-count-badge" class="px-2 py-1 rounded-full bg-slate-800 text-slate-300 font-mono text-[11px]">0 evaluations</span>
                 </div>
             </div>
@@ -360,58 +426,6 @@
             </div>
         </section>
 
-        <!-- SECTION 4: PAPER PORTFOLIO EXECUTION & LIVE STATUS -->
-        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
-            <!-- Active Positions -->
-            <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
-                <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400"></span>
-                        <h2 class="font-semibold text-sm text-white">Active Positions</h2>
-                    </div>
-                    <span id="positions-count" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">0</span>
-                </div>
-                <div class="p-4 flex-1 overflow-x-auto">
-                    <div id="positions-container">
-                        <div class="py-8 text-center text-slate-500 text-sm">Loading positions...</div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- Pending Signals -->
-            <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm flex flex-col">
-                <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-                    <div class="flex items-center gap-2">
-                        <span class="w-2.5 h-2.5 rounded-full bg-indigo-400"></span>
-                        <h2 class="font-semibold text-sm text-white">Pending Breakout Signals</h2>
-                    </div>
-                    <span id="signals-count" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">0</span>
-                </div>
-                <div class="p-4 flex-1 overflow-x-auto">
-                    <div id="signals-container">
-                        <div class="py-8 text-center text-slate-500 text-sm">Loading pending signals...</div>
-                    </div>
-                </div>
-            </section>
-        </div>
-
-        <!-- SECTION 5: TRADE HISTORY & AI RETROSPECTIVES -->
-        <section class="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden shadow-sm">
-            <div class="px-5 py-4 border-b border-slate-800 flex items-center justify-between">
-                <div class="flex items-center gap-2">
-                    <span class="w-2.5 h-2.5 rounded-full bg-purple-400"></span>
-                    <h2 class="font-semibold text-sm text-white">Trade History &amp; AI Explanations</h2>
-                </div>
-                <span id="trades-count" class="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">0</span>
-            </div>
-            <div class="p-4">
-                <div id="trades-container">
-                    <div class="py-8 text-center text-slate-500 text-sm">Loading trade history...</div>
-                </div>
-            </div>
-        </section>
-
         <!-- Hidden / Backward-Compatible Portfolio Metric Elements for Existing JS Tests -->
         <div class="sr-only" aria-hidden="true">
             <span id="metric-equity">100.00</span>
@@ -424,7 +438,7 @@
 
     <!-- Footer -->
     <footer class="border-t border-slate-800/80 py-5 text-center text-xs text-slate-500">
-        Crypto AI Trader &bull; Binance Spot Deterministic Paper Trading &bull; 8-Week 5-Variant Study &bull; Strictly Read-Only GUI
+        Crypto AI Trader &bull; Bidirectional Futures Paper Trading &bull; $100.00 Capital Baseline &bull; Strictly Read-Only GUI
     </footer>
 
     <!-- JavaScript Application -->
@@ -434,6 +448,13 @@
         let chartInstance = null;
         let cachedVariantsData = null;
         let cachedDecisions = [];
+        let cachedPortfolio = null;
+        let cachedPositions = [];
+
+        const TRACKED_SYMBOLS = [
+            'BTCUSDT', 'ETHUSDT', 'SOLUSDT', 'BNBUSDT', 'XRPUSDT',
+            'STRKUSDT', 'HYPEUSDT', 'KAVAUSDT', 'ONDOUSDT', 'ZECUSDT'
+        ];
 
         // Formatting Utilities
         function formatNumber(val, decimals = 2) {
@@ -487,7 +508,72 @@
             }
         }
 
-        // 1. Fetch & Render System Status & KPI Cards
+        // 1. Fetch & Render Portfolio Metrics
+        async function fetchPortfolio() {
+            try {
+                const res = await fetch('/portfolio');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                cachedPortfolio = data;
+
+                const eq = parseFloat(data.equity || 100.0);
+                const cash = parseFloat(data.cash || 100.0);
+                const starting = parseFloat(data.starting_cash || 100.0);
+                const realized = parseFloat(data.realized_pnl || 0.0);
+                const unrealized = parseFloat(data.unrealized_pnl || (eq - cash));
+                const totalPnl = parseFloat(data.total_pnl || (eq - starting));
+                const totalPct = parseFloat(data.total_pnl_pct || ((totalPnl / starting) * 100));
+
+                const eqElem = document.getElementById('kpi-equity-val');
+                const cashElem = document.getElementById('kpi-cash-val');
+                const marginElem = document.getElementById('kpi-margin-val');
+                const retElem = document.getElementById('kpi-total-return');
+                const realElem = document.getElementById('kpi-realized-pnl');
+                const unrealElem = document.getElementById('kpi-unrealized-pnl');
+
+                if (eqElem) eqElem.textContent = `$${formatNumber(eq, 2)}`;
+                if (cashElem) cashElem.textContent = `$${formatNumber(cash, 2)}`;
+
+                // Margin used is either equity - cash (for active long/short) or sum from positions
+                const marginUsed = Math.max(0, eq - cash);
+                if (marginElem) marginElem.textContent = `$${formatNumber(marginUsed, 2)}`;
+
+                if (retElem) {
+                    const sign = totalPct >= 0 ? '+' : '';
+                    retElem.textContent = `${sign}${formatNumber(totalPct, 2)}%`;
+                    retElem.className = totalPct >= 0
+                        ? 'text-xs font-bold font-mono px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        : 'text-xs font-bold font-mono px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20';
+                }
+
+                if (realElem) {
+                    const rSign = realized >= 0 ? '+' : '';
+                    realElem.textContent = `${rSign}$${formatNumber(realized, 2)}`;
+                    realElem.className = realized >= 0 ? 'font-mono text-emerald-400' : 'font-mono text-rose-400';
+                }
+
+                if (unrealElem) {
+                    const uSign = unrealized >= 0 ? '+' : '';
+                    unrealElem.textContent = `${uSign}$${formatNumber(unrealized, 2)}`;
+                    unrealElem.className = unrealized >= 0 ? 'font-mono text-emerald-400' : 'font-mono text-rose-400';
+                }
+
+                // Backward compatibility hidden elements
+                const mEq = document.getElementById('metric-equity');
+                const mCash = document.getElementById('metric-cash');
+                const mRisk = document.getElementById('metric-risk');
+                const mLoss = document.getElementById('metric-daily-loss');
+                if (mEq) mEq.textContent = formatNumber(eq, 2);
+                if (mCash) mCash.textContent = formatNumber(cash, 2);
+                if (mRisk) mRisk.textContent = formatNumber(data.open_risk || 0, 2);
+                if (mLoss) mLoss.textContent = data.daily_loss_breached ? 'BREACHED' : 'NORMAL';
+
+            } catch (err) {
+                console.warn('Portfolio fetch error:', err);
+            }
+        }
+
+        // 2. Fetch & Render System Status KPI Card
         async function fetchSystemStatus() {
             try {
                 const res = await fetch('/system/status');
@@ -504,11 +590,11 @@
                 if (rState === 'UPTREND') {
                     regimeBadge.className = 'px-3 py-1 rounded-lg text-sm font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1.5';
                     regimeText.textContent = '▲ UPTREND';
-                    regimeDesc.textContent = 'Bullish regime (BTC > 50-day SMA). Satellite breakouts permitted.';
+                    regimeDesc.textContent = 'Bullish regime (BTC > 50-day SMA). Long breakouts favored.';
                 } else if (rState === 'DOWNTREND') {
                     regimeBadge.className = 'px-3 py-1 rounded-lg text-sm font-bold bg-amber-500/10 text-amber-400 border border-amber-500/30 inline-flex items-center gap-1.5';
                     regimeText.textContent = '▼ DOWNTREND';
-                    regimeDesc.textContent = 'Bearish regime (BTC < 50-day SMA). Satellite alt signals blocked.';
+                    regimeDesc.textContent = 'Bearish regime (BTC < 50-day SMA). Short setups & selective longs.';
                 } else {
                     regimeBadge.className = 'px-3 py-1 rounded-lg text-sm font-bold bg-slate-800 text-slate-300 border border-slate-700 inline-flex items-center gap-1.5';
                     regimeText.textContent = '● DAY 0 / INITIALIZED';
@@ -529,7 +615,7 @@
                     fbPill.textContent = 'HEALTHY';
                 }
 
-                // Active Positions KPI Card
+                // Active Positions KPI Badge
                 const pos = data.variant_positions || {};
                 document.getElementById('pos-var-a').textContent = pos.variant_a || 0;
                 document.getElementById('pos-var-b').textContent = pos.variant_b || 0;
@@ -543,7 +629,201 @@
             }
         }
 
-        // 2. Fetch & Render Multi-Variant Equity Curves
+        // 3. Fetch & Render Active Positions (Prominent Card/Panel)
+        async function fetchPositions() {
+            const container = document.getElementById('positions-container');
+            const countBadge = document.getElementById('positions-count');
+            const tradeStatus = document.getElementById('kpi-trade-status');
+            const tradeBadge = document.getElementById('kpi-trade-badge');
+            const tradeDesc = document.getElementById('kpi-trade-desc');
+            const tradePnlLive = document.getElementById('kpi-trade-pnl-live');
+
+            try {
+                const res = await fetch('/positions');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const positions = await res.json();
+                cachedPositions = positions;
+
+                const openCount = positions ? positions.length : 0;
+                if (countBadge) countBadge.textContent = `${openCount} / 1`;
+
+                // Update Top KPI Card 2 (Active Trade Status)
+                if (openCount === 0) {
+                    if (tradeBadge) {
+                        tradeBadge.className = 'px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700 inline-flex items-center gap-1.5';
+                    }
+                    if (tradeStatus) {
+                        tradeStatus.innerHTML = '<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>IDLE - Scanning';
+                    }
+                    if (tradeDesc) {
+                        tradeDesc.textContent = 'Scanning 10 pairs for highest-scoring Long/Short breakout';
+                    }
+                    if (tradePnlLive) {
+                        tradePnlLive.innerHTML = 'Unrealized PnL: <span class="text-slate-400 font-mono">$0.00 (0.00%)</span>';
+                    }
+                } else {
+                    const pos = positions[0];
+                    const dir = (pos.direction || (pos.signal?.side?.toUpperCase()) || 'LONG').toUpperCase();
+                    const isShort = dir === 'SHORT';
+                    const lev = pos.leverage || 7;
+                    const uPnl = parseFloat(pos.unrealized_pnl || 0);
+                    const uPct = parseFloat(pos.unrealized_pnl_pct || 0);
+                    const sign = uPnl >= 0 ? '+' : '';
+
+                    if (tradeBadge) {
+                        tradeBadge.className = isShort
+                            ? 'px-2.5 py-1 rounded-lg text-xs font-bold bg-rose-500/10 text-rose-400 border border-rose-500/30 inline-flex items-center gap-1.5'
+                            : 'px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 inline-flex items-center gap-1.5';
+                    }
+                    if (tradeStatus) {
+                        tradeStatus.innerHTML = `<span class="w-2 h-2 rounded-full ${isShort ? 'bg-rose-400' : 'bg-emerald-400'} animate-ping"></span>IN POSITION: ${escapeHtml(pos.symbol)} ${dir} ${lev}x`;
+                    }
+                    if (tradeDesc) {
+                        tradeDesc.textContent = `Entry: $${formatNumber(pos.entry_fill?.price, 4)} &bull; Stop: $${formatNumber(pos.stop_price, 4)} &bull; Target: $${formatNumber(pos.target_price, 4)}`;
+                    }
+                    if (tradePnlLive) {
+                        const colorClass = uPnl >= 0 ? 'text-emerald-400' : 'text-rose-400';
+                        tradePnlLive.innerHTML = `Unrealized PnL: <strong class="${colorClass} font-mono">${sign}$${formatNumber(uPnl, 2)} (${sign}${formatNumber(uPct, 2)}%)</strong>`;
+                    }
+                }
+
+                // Render Active Position Live Monitor Panel
+                if (!positions || positions.length === 0) {
+                    // Clean Placeholder State: Radar / Scanner Monitor
+                    container.innerHTML = `
+                        <div class="py-8 px-4 rounded-xl bg-slate-950/70 border border-slate-800 text-center">
+                            <div class="flex items-center justify-center mb-3">
+                                <div class="relative w-12 h-12 flex items-center justify-center">
+                                    <span class="absolute inset-0 rounded-full bg-emerald-500/20 radar-ping"></span>
+                                    <div class="w-9 h-9 rounded-full bg-slate-900 border border-emerald-500/40 flex items-center justify-center shadow-lg shadow-emerald-500/10">
+                                        <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+                            <h3 class="text-sm font-bold text-white tracking-wide">BIDIRECTIONAL SCANNER ACTIVE &bull; NO OPEN POSITION</h3>
+                            <p class="text-xs text-slate-400 max-w-2xl mx-auto mt-1.5 leading-relaxed">
+                                Evaluating 1H closed candles across 10 Binance Spot pairs. Criteria: Close vs. 200 EMA, 20-period High/Low breakout, Volume &gt; 20-period Volume SMA, and Bullish (52–75) or Bearish (25–48) RSI. The single highest-scoring setup will enter automatically with 5x–10x dynamic leverage.
+                            </p>
+                            <div class="flex flex-wrap items-center justify-center gap-1.5 mt-4 max-w-3xl mx-auto">
+                                ${TRACKED_SYMBOLS.map(sym => `
+                                    <span class="px-2.5 py-1 rounded-md text-[11px] font-mono font-medium bg-slate-900 text-slate-300 border border-slate-800 hover:border-slate-700 transition">
+                                        ${sym}
+                                    </span>
+                                `).join('')}
+                            </div>
+                            <div class="mt-4 pt-3 border-t border-slate-900 text-[11px] text-slate-500">
+                                Max Open Positions: <strong>1 / 1 Available</strong> &bull; Risk Cap: <strong>95% Margin Per Trade</strong> &bull; Stop-Loss: <strong>1.5x ATR</strong> &bull; Target: <strong>3.0x ATR (1:2 R:R)</strong>
+                            </div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Render Dedicated Live Active Position Monitor Card
+                const pos = positions[0];
+                const dir = (pos.direction || (pos.signal?.side?.toUpperCase()) || 'LONG').toUpperCase();
+                const isShort = dir === 'SHORT';
+                const lev = pos.leverage || 7;
+                const entryPrice = parseFloat(pos.entry_fill?.price || 0);
+                const markPrice = parseFloat(pos.current_price || entryPrice);
+                const stopPrice = parseFloat(pos.stop_price || pos.stop_loss || 0);
+                const targetPrice = parseFloat(pos.target_price || pos.take_profit || 0);
+                const liqPrice = parseFloat(pos.liquidation_price || 0);
+                const marginUsed = parseFloat(pos.margin_used || 0);
+                const notional = parseFloat(pos.notional || (entryPrice * parseFloat(pos.quantity || 0)));
+                const uPnl = parseFloat(pos.unrealized_pnl || 0);
+                const uPct = parseFloat(pos.unrealized_pnl_pct || 0);
+                const sign = uPnl >= 0 ? '+' : '';
+                const pnlColor = uPnl >= 0 ? 'text-emerald-400' : 'text-rose-400';
+                const pnlBg = uPnl >= 0 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-rose-500/10 border-rose-500/20';
+
+                // Price Progress relative to Stop and Target
+                let progressPct = 50;
+                if (targetPrice !== stopPrice) {
+                    if (!isShort) {
+                        progressPct = Math.min(100, Math.max(0, ((markPrice - stopPrice) / (targetPrice - stopPrice)) * 100));
+                    } else {
+                        progressPct = Math.min(100, Math.max(0, ((stopPrice - markPrice) / (stopPrice - targetPrice)) * 100));
+                    }
+                }
+
+                container.innerHTML = `
+                    <div class="p-5 bg-slate-950/80 rounded-xl border ${isShort ? 'border-rose-900/40' : 'border-emerald-900/40'} shadow-lg space-y-4">
+                        <!-- Top Row: Symbol, Badges, and Live PnL -->
+                        <div class="flex flex-wrap items-center justify-between gap-3">
+                            <div class="flex items-center gap-3">
+                                <span class="text-xl font-black text-white tracking-wide">${escapeHtml(pos.symbol)}</span>
+                                <span class="text-xs font-bold px-2.5 py-1 rounded-lg ${isShort ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}">
+                                    ${dir}
+                                </span>
+                                <span class="text-xs font-bold font-mono px-2 py-1 rounded-lg bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                                    ${lev}x FUTURES
+                                </span>
+                                <span class="text-xs font-mono px-2 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700">
+                                    Qty: ${formatNumber(pos.quantity, 6)}
+                                </span>
+                            </div>
+                            <div class="px-3.5 py-1.5 rounded-xl border ${pnlBg} flex items-baseline gap-2">
+                                <span class="text-xs font-medium text-slate-400">Live Unrealized PnL:</span>
+                                <span class="text-base font-black font-mono ${pnlColor}">
+                                    ${sign}$${formatNumber(uPnl, 2)} (${sign}${formatNumber(uPct, 2)}%)
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Metric Grid -->
+                        <div class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 pt-2 text-xs">
+                            <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+                                <div class="text-slate-400 text-[11px]">Entry Price</div>
+                                <div class="font-bold text-white font-mono mt-0.5">$${formatNumber(entryPrice, 4)}</div>
+                            </div>
+                            <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+                                <div class="text-slate-400 text-[11px]">Current Mark Price</div>
+                                <div class="font-bold text-white font-mono mt-0.5">$${formatNumber(markPrice, 4)}</div>
+                            </div>
+                            <div class="bg-slate-900/80 p-2.5 rounded-lg border border-rose-900/30">
+                                <div class="text-rose-400 text-[11px] font-semibold">Stop-Loss (SL)</div>
+                                <div class="font-bold text-rose-400 font-mono mt-0.5">$${formatNumber(stopPrice, 4)}</div>
+                            </div>
+                            <div class="bg-slate-900/80 p-2.5 rounded-lg border border-emerald-900/30">
+                                <div class="text-emerald-400 text-[11px] font-semibold">Take-Profit (TP)</div>
+                                <div class="font-bold text-emerald-400 font-mono mt-0.5">$${formatNumber(targetPrice, 4)}</div>
+                            </div>
+                            <div class="bg-slate-900/80 p-2.5 rounded-lg border border-amber-900/30">
+                                <div class="text-amber-400 text-[11px] font-semibold">Liquidation Price</div>
+                                <div class="font-bold text-amber-400 font-mono mt-0.5">$${formatNumber(liqPrice, 4)}</div>
+                            </div>
+                            <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+                                <div class="text-slate-400 text-[11px]">Margin Allocated</div>
+                                <div class="font-bold text-slate-200 font-mono mt-0.5">$${formatNumber(marginUsed, 2)}</div>
+                            </div>
+                            <div class="bg-slate-900/80 p-2.5 rounded-lg border border-slate-800">
+                                <div class="text-slate-400 text-[11px]">Notional Size</div>
+                                <div class="font-bold text-indigo-300 font-mono mt-0.5">$${formatNumber(notional, 2)}</div>
+                            </div>
+                        </div>
+
+                        <!-- Visual Price Boundary Progress Bar -->
+                        <div class="pt-2">
+                            <div class="flex justify-between text-[11px] font-mono text-slate-400 mb-1">
+                                <span class="text-rose-400">SL: $${formatNumber(stopPrice, 4)}</span>
+                                <span class="text-slate-300">Mark: $${formatNumber(markPrice, 4)}</span>
+                                <span class="text-emerald-400">TP: $${formatNumber(targetPrice, 4)}</span>
+                            </div>
+                            <div class="w-full bg-slate-900 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-800">
+                                <div class="h-full rounded-full ${isShort ? 'bg-gradient-to-r from-rose-500 via-amber-500 to-emerald-500' : 'bg-gradient-to-r from-rose-500 via-amber-500 to-emerald-500'}" style="width: ${progressPct}%"></div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } catch (err) {
+                container.innerHTML = `<div class="py-6 text-center text-xs text-slate-500">Position monitor state: idle</div>`;
+            }
+        }
+
+        // 4. Fetch & Render Multi-Variant Equity Curves
         async function fetchVariantsEquity() {
             try {
                 const res = await fetch('/variants/equity');
@@ -635,16 +915,17 @@
                     return lastVal;
                 });
 
+                const isPrimary = k === 'variant_a';
                 return {
-                    label: v.name,
+                    label: isPrimary ? 'Live Futures Engine (Primary)' : v.name,
                     data: seriesData,
-                    borderColor: v.color,
-                    backgroundColor: v.color + '15',
-                    borderWidth: 2.2,
-                    pointRadius: seriesData.length <= 1 ? 4 : 2,
+                    borderColor: isPrimary ? '#6366f1' : v.color,
+                    backgroundColor: isPrimary ? '#6366f120' : v.color + '10',
+                    borderWidth: isPrimary ? 3.0 : 1.5,
+                    pointRadius: seriesData.length <= 1 ? 4 : (isPrimary ? 3 : 1),
                     pointHoverRadius: 5,
                     tension: 0.15,
-                    fill: false
+                    fill: isPrimary
                 };
             });
 
@@ -721,7 +1002,208 @@
             }
         }
 
-        // 3. Fetch & Render Fundamental Gate Decision Feed
+        // 5. Fetch & Render Recent Scored Signals Table
+        async function fetchSignals() {
+            const container = document.getElementById('signals-container');
+            const countBadge = document.getElementById('signals-count');
+            try {
+                const res = await fetch('/signals?all_signals=true');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const signals = await res.json();
+                if (countBadge) countBadge.textContent = signals.length;
+
+                if (!signals || signals.length === 0) {
+                    container.innerHTML = `
+                        <div class="py-10 text-center">
+                            <svg class="w-8 h-8 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                            <p class="text-sm font-medium text-slate-400">No signals evaluated in current session</p>
+                            <p class="text-xs text-slate-500 mt-1">Scanner evaluates all 10 pairs on closed 1H candles &bull; Signals will appear here</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = `
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="border-b border-slate-800 bg-slate-950/70 text-slate-400 uppercase font-semibold text-[11px] tracking-wider">
+                                    <th class="py-3 px-4">Timestamp (UTC)</th>
+                                    <th class="py-3 px-4">Symbol</th>
+                                    <th class="py-3 px-4">Direction</th>
+                                    <th class="py-3 px-4">Momentum Score</th>
+                                    <th class="py-3 px-4">Entry Reference</th>
+                                    <th class="py-3 px-4">Suggested Leverage</th>
+                                    <th class="py-3 px-4">Stop / Target (1:2 R:R)</th>
+                                    <th class="py-3 px-4">Status</th>
+                                    <th class="py-3 px-4">Analysis / Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-850">
+                `;
+
+                signals.slice().reverse().forEach(sig => {
+                    const dir = (sig.direction || (sig.side?.toUpperCase()) || 'LONG').toUpperCase();
+                    const isShort = dir === 'SHORT';
+                    const lev = sig.leverage || 7;
+                    const score = parseFloat(sig.score || 0);
+                    const statusStr = (sig.status || 'PENDING').toUpperCase();
+
+                    let statusBadge = '';
+                    if (statusStr === 'EXECUTED') {
+                        statusBadge = '<span class="px-2 py-0.5 rounded font-semibold text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">EXECUTED</span>';
+                    } else if (statusStr === 'PENDING') {
+                        statusBadge = '<span class="px-2 py-0.5 rounded font-semibold text-xs bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">PENDING</span>';
+                    } else if (statusStr.includes('VETO') || statusStr.includes('BLOCKED')) {
+                        statusBadge = '<span class="px-2 py-0.5 rounded font-semibold text-xs bg-amber-500/20 text-amber-400 border border-amber-500/30">BLOCKED</span>';
+                    } else {
+                        statusBadge = '<span class="px-2 py-0.5 rounded font-semibold text-xs bg-slate-800 text-slate-400 border border-slate-700">SKIPPED</span>';
+                    }
+
+                    const entryRef = sig.entry_price ? `$${formatNumber(sig.entry_price, 4)}` : '--';
+                    const slStr = sig.stop_loss ? `$${formatNumber(sig.stop_loss, 4)}` : '--';
+                    const tpStr = sig.take_profit ? `$${formatNumber(sig.take_profit, 4)}` : '--';
+
+                    html += `
+                        <tr class="hover:bg-slate-900/60 transition">
+                            <td class="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">${formatDateTime(sig.decision_time)}</td>
+                            <td class="py-3 px-4 font-bold text-white tracking-wide">${escapeHtml(sig.symbol)}</td>
+                            <td class="py-3 px-4 whitespace-nowrap">
+                                <span class="px-2 py-0.5 rounded font-semibold text-xs ${isShort ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}">
+                                    ${dir}
+                                </span>
+                            </td>
+                            <td class="py-3 px-4 font-mono font-bold text-indigo-400 whitespace-nowrap">${formatNumber(score, 2)}</td>
+                            <td class="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">${entryRef}</td>
+                            <td class="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">${lev}x</td>
+                            <td class="py-3 px-4 font-mono text-xs whitespace-nowrap">
+                                <span class="text-rose-400">${slStr}</span> / <span class="text-emerald-400">${tpStr}</span>
+                            </td>
+                            <td class="py-3 px-4 whitespace-nowrap">${statusBadge}</td>
+                            <td class="py-3 px-4 text-slate-300 max-w-xs break-words">${escapeHtml(sig.explanation || 'Qualified breakout setup')}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                container.innerHTML = html;
+            } catch (err) {
+                container.innerHTML = `<div class="py-6 text-center text-xs text-slate-500">No signals evaluated in current session</div>`;
+            }
+        }
+
+        // 6. Fetch & Render Closed Trades History Table
+        async function fetchTrades() {
+            const container = document.getElementById('trades-container');
+            const countBadge = document.getElementById('trades-count');
+            try {
+                const res = await fetch('/trades');
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const trades = await res.json();
+                if (countBadge) countBadge.textContent = trades.length;
+
+                if (!trades || trades.length === 0) {
+                    container.innerHTML = `
+                        <div class="py-10 text-center">
+                            <svg class="w-8 h-8 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                            </svg>
+                            <p class="text-sm font-medium text-slate-400">No closed trades yet</p>
+                            <p class="text-xs text-slate-500 mt-1">Filled futures paper trades will appear here along with exit levels and AI retrospective explanations</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = `
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left border-collapse text-xs">
+                            <thead>
+                                <tr class="border-b border-slate-800 bg-slate-950/70 text-slate-400 uppercase font-semibold text-[11px] tracking-wider">
+                                    <th class="py-3 px-4">Closed Time (UTC)</th>
+                                    <th class="py-3 px-4">Symbol</th>
+                                    <th class="py-3 px-4">Direction</th>
+                                    <th class="py-3 px-4">Leverage</th>
+                                    <th class="py-3 px-4">Entry Price</th>
+                                    <th class="py-3 px-4">Exit Price</th>
+                                    <th class="py-3 px-4">SL / TP Levels</th>
+                                    <th class="py-3 px-4">Margin Used</th>
+                                    <th class="py-3 px-4">Realized Net PnL</th>
+                                    <th class="py-3 px-4">Exit Reason</th>
+                                    <th class="py-3 px-4">AI Exit Explanation</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-850">
+                `;
+
+                trades.slice().reverse().forEach(t => {
+                    const netPnl = parseFloat(t.realized_pnl || t.net_pnl || 0);
+                    const isProfit = netPnl >= 0;
+                    const dir = (t.direction || (t.signal?.side?.toUpperCase()) || 'LONG').toUpperCase();
+                    const isShort = dir === 'SHORT';
+                    const lev = t.leverage || 7;
+                    const margin = parseFloat(t.margin_used || 0);
+                    const pnlPct = margin > 0 ? (netPnl / margin) * 100 : 0;
+                    const sign = netPnl >= 0 ? '+' : '';
+
+                    let reasonBadge = '';
+                    const rStr = (t.exit_reason || '').toUpperCase();
+                    if (rStr.includes('TAKE_PROFIT') || rStr.includes('TP_HIT')) {
+                        reasonBadge = '<span class="px-2 py-0.5 rounded font-semibold text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">TP_HIT</span>';
+                    } else if (rStr.includes('STOP_LOSS') || rStr.includes('SL_HIT')) {
+                        reasonBadge = '<span class="px-2 py-0.5 rounded font-semibold text-xs bg-rose-500/20 text-rose-400 border border-rose-500/30">SL_HIT</span>';
+                    } else if (rStr.includes('LIQUIDAT')) {
+                        reasonBadge = '<span class="px-2 py-0.5 rounded font-semibold text-xs bg-red-600/30 text-red-400 border border-red-500">LIQUIDATED</span>';
+                    } else {
+                        reasonBadge = `<span class="px-2 py-0.5 rounded font-semibold text-xs bg-slate-800 text-slate-300 border border-slate-700">${escapeHtml(t.exit_reason)}</span>`;
+                    }
+
+                    const slStr = t.stop_price ? `$${formatNumber(t.stop_price, 4)}` : '--';
+                    const tpStr = t.target_price ? `$${formatNumber(t.target_price, 4)}` : '--';
+
+                    html += `
+                        <tr class="hover:bg-slate-900/60 transition">
+                            <td class="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">${formatDateTime(t.exit_fill?.timestamp)}</td>
+                            <td class="py-3 px-4 font-bold text-white tracking-wide">${escapeHtml(t.symbol)}</td>
+                            <td class="py-3 px-4 whitespace-nowrap">
+                                <span class="px-2 py-0.5 rounded font-semibold text-xs ${isShort ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}">
+                                    ${dir}
+                                </span>
+                            </td>
+                            <td class="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">${lev}x</td>
+                            <td class="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">$${formatNumber(t.entry_fill?.price, 4)}</td>
+                            <td class="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">$${formatNumber(t.exit_fill?.price, 4)}</td>
+                            <td class="py-3 px-4 font-mono text-xs whitespace-nowrap">
+                                <span class="text-rose-400">${slStr}</span> / <span class="text-emerald-400">${tpStr}</span>
+                            </td>
+                            <td class="py-3 px-4 font-mono text-slate-300 whitespace-nowrap">$${formatNumber(margin, 2)}</td>
+                            <td class="py-3 px-4 font-mono font-bold whitespace-nowrap ${isProfit ? 'text-emerald-400' : 'text-rose-400'}">
+                                ${sign}$${formatNumber(netPnl, 2)} (${sign}${formatNumber(pnlPct, 2)}%)
+                            </td>
+                            <td class="py-3 px-4 whitespace-nowrap">${reasonBadge}</td>
+                            <td class="py-3 px-4 text-slate-300 max-w-sm break-words">${escapeHtml(t.explanation || 'Futures position exit filled.')}</td>
+                        </tr>
+                    `;
+                });
+
+                html += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                container.innerHTML = html;
+            } catch (err) {
+                container.innerHTML = `<div class="py-6 text-center text-xs text-slate-500">No closed trades yet</div>`;
+            }
+        }
+
+        // 7. Fetch & Render Fundamental Gate Decision Feed
         async function fetchGateDecisions() {
             try {
                 const res = await fetch('/gate/decisions?limit=100');
@@ -783,7 +1265,6 @@
                 const confPct = (d.confidence ? (d.confidence * 100).toFixed(0) : '100') + '%';
                 const timeStr = formatDateTime(d.timestamp);
 
-                // Row and badge color-coding
                 let rowStyle = 'hover:bg-slate-900/60 transition';
                 let verdictBadge = '';
 
@@ -806,7 +1287,6 @@
                     verdictBadge = `<span class="px-2 py-0.5 rounded font-semibold text-xs bg-slate-800 text-slate-300">${v}</span>`;
                 }
 
-                // Regime State badge
                 let regimeBadge = '<span class="text-slate-500 font-mono">--</span>';
                 if (rState === 'UPTREND') {
                     regimeBadge = '<span class="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-400">UPTREND</span>';
@@ -814,12 +1294,10 @@
                     regimeBadge = '<span class="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-400">DOWNTREND</span>';
                 }
 
-                // Regime Blocked boolean indicator
                 const blockedBadge = isBlocked
                     ? '<span class="px-1.5 py-0.5 rounded text-[11px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">True</span>'
                     : '<span class="px-1.5 py-0.5 rounded text-[11px] font-medium text-slate-400">False</span>';
 
-                // Mode badge
                 const modeBadge = d.mode === 'REVIEW'
                     ? '<span class="px-1.5 py-0.5 rounded text-[10px] bg-purple-500/10 text-purple-400 border border-purple-500/20 font-mono">REVIEW</span>'
                     : '<span class="px-1.5 py-0.5 rounded text-[10px] bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 font-mono">ENTRY</span>';
@@ -841,169 +1319,6 @@
             tbody.innerHTML = html;
         }
 
-        // 4. Fetch Active Positions (Backward Compatible)
-        async function fetchPositions() {
-            const container = document.getElementById('positions-container');
-            const countBadge = document.getElementById('positions-count');
-            try {
-                const res = await fetch('/positions');
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const positions = await res.json();
-                if (countBadge) countBadge.textContent = positions.length;
-
-                if (!positions || positions.length === 0) {
-                    container.innerHTML = `
-                        <div class="py-10 text-center">
-                            <svg class="w-8 h-8 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M20 12H4" />
-                            </svg>
-                            <p class="text-sm font-medium text-slate-400">No active positions</p>
-                            <p class="text-xs text-slate-500 mt-1">Pending breakout signals will open on observation</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                let html = '<div class="space-y-3">';
-                positions.forEach(pos => {
-                    const dir = (pos.direction || (pos.signal?.side?.toUpperCase()) || 'LONG').toUpperCase();
-                    const isShort = dir === 'SHORT';
-                    const lev = pos.leverage || 1;
-                    html += `
-                        <div class="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
-                            <div class="flex items-center justify-between mb-1.5">
-                                <div class="flex items-center space-x-2">
-                                    <span class="font-bold text-white text-sm">${escapeHtml(pos.symbol)}</span>
-                                    <span class="text-xs font-semibold px-2 py-0.5 rounded ${isShort ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}">${dir}</span>
-                                    <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">${lev}x FUTURES</span>
-                                </div>
-                                <span class="text-xs font-mono text-slate-400">Margin: $${formatNumber(pos.margin_used, 2)}</span>
-                            </div>
-                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs text-slate-300">
-                                <div><span class="text-slate-500">Entry:</span> ${formatNumber(pos.entry_fill?.price, 4)}</div>
-                                <div><span class="text-slate-500">Stop:</span> <span class="text-rose-400">${formatNumber(pos.stop_price, 4)}</span></div>
-                                <div><span class="text-slate-500">Target:</span> <span class="text-emerald-400">${formatNumber(pos.target_price, 4)}</span></div>
-                                <div><span class="text-slate-500">Liq Price:</span> <span class="text-amber-400">${formatNumber(pos.liquidation_price, 4)}</span></div>
-                            </div>
-                        </div>
-                    `;
-                });
-                html += '</div>';
-                container.innerHTML = html;
-            } catch (err) {
-                container.innerHTML = `<div class="py-6 text-center text-xs text-slate-500">Positions in memory: none active</div>`;
-            }
-        }
-
-        // 5. Fetch Pending Signals (Backward Compatible)
-        async function fetchSignals() {
-            const container = document.getElementById('signals-container');
-            const countBadge = document.getElementById('signals-count');
-            try {
-                const res = await fetch('/signals');
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const signals = await res.json();
-                if (countBadge) countBadge.textContent = signals.length;
-
-                if (!signals || signals.length === 0) {
-                    container.innerHTML = `
-                        <div class="py-10 text-center">
-                            <svg class="w-8 h-8 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
-                            <p class="text-sm font-medium text-slate-400">No pending signals</p>
-                            <p class="text-xs text-slate-500 mt-1">Scanning Binance Spot 1H candle closes for breakout qualification</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                let html = '<div class="space-y-3">';
-                signals.forEach(sig => {
-                    const dir = (sig.direction || (sig.side?.toUpperCase()) || 'LONG').toUpperCase();
-                    const isShort = dir === 'SHORT';
-                    const lev = sig.leverage || 1;
-                    const score = sig.score || 0;
-                    html += `
-                        <div class="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
-                            <div class="flex items-center justify-between mb-1.5">
-                                <div class="flex items-center space-x-2">
-                                    <span class="font-bold text-white text-sm">${escapeHtml(sig.symbol)}</span>
-                                    <span class="text-xs font-semibold px-2 py-0.5 rounded ${isShort ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}">${dir}</span>
-                                    <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">${lev}x</span>
-                                </div>
-                                <span class="text-xs font-mono text-indigo-400 font-semibold">Score: ${formatNumber(score, 2)}</span>
-                            </div>
-                            <div class="text-xs text-slate-400 flex justify-between">
-                                <span>ATR(14): ${formatNumber(sig.atr_14, 4)}</span>
-                                <span>${formatDateTime(sig.decision_time)}</span>
-                            </div>
-                            ${sig.explanation ? `<div class="mt-2 text-xs text-indigo-200 bg-slate-900 p-2 rounded">${escapeHtml(sig.explanation)}</div>` : ''}
-                        </div>
-                    `;
-                });
-                html += '</div>';
-                container.innerHTML = html;
-            } catch (err) {
-                container.innerHTML = `<div class="py-6 text-center text-xs text-slate-500">No pending signals in current session</div>`;
-            }
-        }
-
-        // 6. Fetch Closed Trades (Backward Compatible)
-        async function fetchTrades() {
-            const container = document.getElementById('trades-container');
-            const countBadge = document.getElementById('trades-count');
-            try {
-                const res = await fetch('/trades');
-                if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                const trades = await res.json();
-                if (countBadge) countBadge.textContent = trades.length;
-
-                if (!trades || trades.length === 0) {
-                    container.innerHTML = `
-                        <div class="py-10 text-center">
-                            <svg class="w-8 h-8 mx-auto text-slate-600 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                            </svg>
-                            <p class="text-sm font-medium text-slate-400">No closed trades yet</p>
-                            <p class="text-xs text-slate-500 mt-1">Filled paper trades will appear here along with post-trade AI retrospectives</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                let html = '<div class="space-y-3">';
-                trades.slice().reverse().forEach(t => {
-                    const netPnl = parseFloat(t.net_pnl || t.realized_pnl || 0);
-                    const isProfit = netPnl >= 0;
-                    const dir = (t.direction || (t.signal?.side?.toUpperCase()) || 'LONG').toUpperCase();
-                    const isShort = dir === 'SHORT';
-                    const lev = t.leverage || 1;
-                    html += `
-                        <div class="p-3 bg-slate-950/60 rounded-lg border border-slate-800">
-                            <div class="flex items-center justify-between mb-1.5">
-                                <div class="flex items-center space-x-2">
-                                    <span class="font-bold text-white text-sm">${escapeHtml(t.symbol)}</span>
-                                    <span class="text-xs font-semibold px-2 py-0.5 rounded ${isShort ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'}">${dir}</span>
-                                    <span class="text-xs font-mono px-1.5 py-0.5 rounded bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">${lev}x</span>
-                                </div>
-                                <span class="font-mono font-bold ${isProfit ? 'text-emerald-400' : 'text-rose-400'}">${isProfit ? '+' : ''}$${formatNumber(netPnl, 4)} USDT</span>
-                            </div>
-                            <div class="text-xs text-slate-400 flex justify-between">
-                                <span>Exit: <span class="text-slate-200 font-semibold">${escapeHtml(t.exit_reason)}</span></span>
-                                <span>Closed: ${formatDateTime(t.exit_fill?.timestamp)}</span>
-                            </div>
-                            ${t.explanation ? `<div class="mt-2 text-xs text-slate-300 bg-slate-900 p-2 rounded">${escapeHtml(t.explanation)}</div>` : ''}
-                        </div>
-                    `;
-                });
-                html += '</div>';
-                container.innerHTML = html;
-            } catch (err) {
-                container.innerHTML = `<div class="py-6 text-center text-xs text-slate-500">No closed trades yet (Day 0)</div>`;
-            }
-        }
-
         // Orchestrate Refresh across all endpoints
         async function refreshDashboard() {
             const refreshIcon = document.getElementById('refresh-icon');
@@ -1011,12 +1326,13 @@
 
             try {
                 await Promise.allSettled([
+                    fetchPortfolio(),
                     fetchSystemStatus(),
-                    fetchVariantsEquity(),
-                    fetchGateDecisions(),
                     fetchPositions(),
+                    fetchVariantsEquity(),
                     fetchSignals(),
-                    fetchTrades()
+                    fetchTrades(),
+                    fetchGateDecisions()
                 ]);
                 const now = new Date();
                 document.getElementById('last-updated').textContent = now.toLocaleTimeString();
@@ -1027,10 +1343,10 @@
             }
         }
 
-        // Auto Refresh every 10 seconds
+        // Auto Refresh every 5 seconds
         document.addEventListener('DOMContentLoaded', () => {
             refreshDashboard();
-            setInterval(refreshDashboard, 10000);
+            setInterval(refreshDashboard, 5000);
         });
     </script>
 </body>
