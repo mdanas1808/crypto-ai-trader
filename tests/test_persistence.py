@@ -153,6 +153,34 @@ def test_database_alert_handler_persists_trade(sqlite_session_factory):
         session.close()
 
 
+def test_database_alert_handler_persists_candle(sqlite_session_factory):
+    from app.database.models import CandleRecord
+
+    handler = DatabaseAlertHandler(sqlite_session_factory)
+    candle = Candle(
+        exchange=EXCHANGE,
+        symbol="BTCUSDT",
+        interval="1h",
+        open_time=START,
+        open=D("10"),
+        high=D("10.2"),
+        low=D("9.9"),
+        close=D("10"),
+        volume=D("1"),
+    )
+
+    handler.on_candle_closed(candle)
+
+    session = sqlite_session_factory()
+    try:
+        records = session.query(CandleRecord).all()
+        assert len(records) == 1
+        assert records[0].symbol == "BTCUSDT"
+        assert records[0].close == D("10")
+    finally:
+        session.close()
+
+
 def test_database_alert_handler_resilient_to_failures(caplog):
     def failing_session_factory():
         raise ConnectionError("Database unreachable")

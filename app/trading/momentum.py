@@ -58,6 +58,11 @@ class BtcRegimeFilter:
         self._cached_closes: list[Decimal] = []
         self._cached_time: datetime | None = None
 
+    @property
+    def current_regime(self) -> str | None:
+        """Return the current regime state string (e.g. UPTREND or DOWNTREND)."""
+        return self._current_regime
+
     def reset_regime(self, regime: str | None = None) -> None:
         """Reset internal hysteresis regime state."""
         self._current_regime = regime

@@ -10,3 +10,11 @@ data/live/
 .DS_Store
 
 *.egg-info/
+
+# Secrets, Virtual Environment & Local Databases
+.env
+.venv/
+*.db
+*.sqlite3
+__pycache__/
+data/

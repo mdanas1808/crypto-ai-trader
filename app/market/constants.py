@@ -9,11 +9,11 @@ FIXED_SYMBOLS: tuple[str, ...] = (
     "ZECUSDT",
 )
 DEFAULT_DYNAMIC_SYMBOLS: tuple[str, ...] = (
-    "TAOUSDT",
+    "NEARUSDT",
     "FETUSDT",
     "RENDERUSDT",
-    "NEARUSDT",
     "INJUSDT",
+    "TAOUSDT",
 )
 SUPPORTED_SYMBOLS: set[str] = set(FIXED_SYMBOLS) | set(DEFAULT_DYNAMIC_SYMBOLS)
 SUPPORTED_INTERVALS = frozenset({"1h", "4h"})

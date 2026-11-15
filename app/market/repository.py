@@ -25,25 +25,53 @@ def persist_candles(session: Session, candles: Iterable[Candle]) -> InsertResult
     if not rows:
         return InsertResult(attempted=0, inserted=0, duplicates_skipped=0)
 
-    statement = (
-        insert(CandleRecord)
-        .values(rows)
-        .on_conflict_do_nothing(
-            index_elements=[
-                CandleRecord.exchange,
-                CandleRecord.symbol,
-                CandleRecord.interval,
-                CandleRecord.open_time,
-            ]
+    bind = session.get_bind()
+    if bind is not None and bind.dialect.name == "sqlite":
+        from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+        statement = (
+            sqlite_insert(CandleRecord)
+            .values(rows)
+            .on_conflict_do_nothing(
+                index_elements=[
+                    CandleRecord.exchange,
+                    CandleRecord.symbol,
+                    CandleRecord.interval,
+                    CandleRecord.open_time,
+                ]
+            )
         )
-        .returning(CandleRecord.open_time)
-    )
-    try:
-        inserted = len(session.execute(statement).all())
-        session.commit()
-    except Exception:
-        session.rollback()
-        raise
+        try:
+            res = session.execute(statement)
+            inserted = (
+                max(0, res.rowcount)
+                if res.rowcount is not None and res.rowcount >= 0
+                else len(rows)
+            )
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+    else:
+        statement = (
+            insert(CandleRecord)
+            .values(rows)
+            .on_conflict_do_nothing(
+                index_elements=[
+                    CandleRecord.exchange,
+                    CandleRecord.symbol,
+                    CandleRecord.interval,
+                    CandleRecord.open_time,
+                ]
+            )
+            .returning(CandleRecord.open_time)
+        )
+        try:
+            inserted = len(session.execute(statement).all())
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
 
     return InsertResult(
         attempted=len(rows),

@@ -16,7 +16,7 @@ import os
 import re
 import signal
 from collections.abc import Awaitable, Callable, Sequence
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 
@@ -291,6 +291,21 @@ class PaperSession:
             logger.warning("Error evaluating BTC regime filter: %s", exc)
         return True
 
+    async def _sync_completed_4h_candle(self, symbol: str) -> None:
+        """Fetch and persist the newly completed 4H candle when a 4H boundary completes."""
+        try:
+            from app.database.database import SessionLocal
+            from app.market.exchange import BinanceSpotClient
+            from app.market.repository import persist_candles
+
+            async with BinanceSpotClient() as client:
+                c4 = await client.fetch_candles(symbol, "4h", limit=2)
+                with SessionLocal() as s:
+                    persist_candles(s, c4)
+            logger.info("Synchronized completed 4H candle for %s", symbol)
+        except Exception as exc:
+            logger.debug("4H candle synchronization omitted or failed for %s: %s", symbol, exc)
+
     async def _build_signal_explanation(self, sig: BreakoutSignal, context_data: Any) -> str:
         if self.explainer is None:
             return ""
@@ -325,6 +340,29 @@ class PaperSession:
             return position
 
         if isinstance(event, Candle):
+            # Persist incoming closed candle to market_candles in database
+            try:
+                from app.database.database import SessionLocal
+                from app.market.repository import persist_candles
+
+                with SessionLocal() as db_session:
+                    persist_candles(db_session, [event])
+            except Exception as exc:
+                logger.debug("Database candle persistence in process_event: %s", exc)
+
+            if self.alert_handler is not None:
+                await self._notify("on_candle_closed", event)
+
+            # Trigger 4H sync when a 4H interval boundary completes
+            if (
+                event.interval == "1h"
+                and (event.open_time + timedelta(hours=1)).minute == 0
+                and (event.open_time + timedelta(hours=1)).hour % 4 == 0
+            ):
+                task = asyncio.create_task(self._sync_completed_4h_candle(event.symbol))
+                self._background_tasks.add(task)
+                task.add_done_callback(self._background_tasks.discard)
+
             trade = None
             if event.interval == "1h":
                 trades: dict[str, Trade] = {}

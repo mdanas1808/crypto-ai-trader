@@ -12,6 +12,7 @@ from collections.abc import Iterable
 from typing import Any, Protocol, runtime_checkable
 
 from app.backtest.models import Position, Trade
+from app.market.models import Candle
 from app.strategy.breakout import BreakoutSignal
 from app.trading.paper import PaperExecutor
 
@@ -21,6 +22,10 @@ logger = logging.getLogger(__name__)
 @runtime_checkable
 class AlertHandler(Protocol):
     """Protocol for receiving real-time paper trading event callbacks."""
+
+    def on_candle_closed(self, candle: Candle) -> None:
+        """Called when a completed candle is processed."""
+        ...
 
     def on_signal_generated(self, signal: BreakoutSignal, explanation: str) -> None:
         """Called when a strategy signal is generated and submitted."""
@@ -45,6 +50,10 @@ class LoggingAlertHandler:
     def __init__(self, logger: logging.Logger | None = None, level: int = logging.INFO) -> None:
         self.logger = logger or logging.getLogger("app.trading.alerts")
         self.level = level
+
+    def on_candle_closed(self, candle: Candle) -> None:
+        """Called when a completed candle is processed."""
+        pass
 
     def on_signal_generated(self, signal: BreakoutSignal, explanation: str) -> None:
         msg = (
@@ -122,6 +131,9 @@ class CompositeAlertHandler:
 
             return _await_all()
         return None
+
+    def on_candle_closed(self, candle: Candle) -> Any:
+        return self._dispatch("on_candle_closed", candle)
 
     def on_signal_generated(self, signal: BreakoutSignal, explanation: str) -> Any:
         return self._dispatch("on_signal_generated", signal, explanation)

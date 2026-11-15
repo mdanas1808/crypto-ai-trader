@@ -203,6 +203,7 @@ class FakeWebSocket:
     def __init__(self, messages):
         self.messages = messages
         self.sent = []
+        self._iter = None
 
     async def __aenter__(self):
         return self
@@ -213,9 +214,22 @@ class FakeWebSocket:
     async def send(self, message):
         self.sent.append(message)
 
+    async def recv(self):
+        if self._iter is None:
+            self._iter = iter(self.messages)
+        try:
+            item = next(self._iter)
+        except StopIteration:
+            raise StopAsyncIteration
+        if isinstance(item, Exception):
+            raise item
+        return item
+
     def __aiter__(self):
         async def messages():
             for item in self.messages:
+                if isinstance(item, Exception):
+                    raise item
                 yield item
 
         return messages()
@@ -455,3 +469,242 @@ def test_parse_candle_open_observation_accepts_dict_directly():
     obs_w = parse_candle_open_observation(wrapped_dict)
     assert isinstance(obs_w, CandleOpenObservation)
     assert obs_w.symbol == "BTCUSDT"
+
+
+async def collect_stream_events(stream):
+    return [e async for e in stream.events()]
+
+
+async def collect_stream_candles(stream):
+    return [c async for c in stream.candles()]
+
+
+def test_lowercase_symbol_subscriptions_enforced():
+    from app.trading.websocket import (
+        BinanceSpotKlineStream as TradingKlineStream,
+    )
+    from app.trading.websocket import (
+        build_subscription_payload,
+        format_kline_stream,
+    )
+
+    # 1. Helper functions enforce lowercase
+    assert format_kline_stream("BTCUSDT", "1h") == "btcusdt@kline_1h"
+    assert format_kline_stream("ethusdt", "4h") == "ethusdt@kline_4h"
+
+    sub_payload = build_subscription_payload(["BTCUSDT", "SOLUSDT"], "1h")
+    assert sub_payload == {
+        "method": "SUBSCRIBE",
+        "params": ["btcusdt@kline_1h", "solusdt@kline_1h"],
+        "id": 1,
+    }
+
+    # 2. Mixed case symbols in stream initialization
+    stream = TradingKlineStream(symbols=("btcUSDT", "ETHusdt"))
+    assert stream.stream_names == ("btcusdt@kline_1h", "ethusdt@kline_1h")
+    assert stream.subscription_payload["params"] == ["btcusdt@kline_1h", "ethusdt@kline_1h"]
+    assert json.loads(stream.subscription_message)["params"] == [
+        "btcusdt@kline_1h",
+        "ethusdt@kline_1h",
+    ]
+
+
+def test_websocket_heartbeat_logged_periodically(monkeypatch, caplog):
+    import logging
+
+    fake = FakeWebSocket(
+        [
+            '{"result":null,"id":1}',
+            event_payload(closed=False, event_time=OPEN_MS + 1000),
+            payload(closed=True),
+        ]
+    )
+    monkeypatch.setattr("app.market.websocket.websockets.connect", lambda _url: fake)
+
+    stream = BinanceSpotKlineStream(symbols=("BTCUSDT",), heartbeat_interval=0.0)
+
+    with caplog.at_level(logging.INFO):
+        events = asyncio.run(collect_stream_events(stream))
+
+    assert len(events) == 2
+    heartbeat_records = [
+        r for r in caplog.records if "WebSocket heartbeat: receiving live ticks..." in r.message
+    ]
+    assert len(heartbeat_records) >= 1
+    assert "ticks=" in heartbeat_records[0].message
+
+
+def test_websocket_heartbeat_not_flooded_on_every_tick(monkeypatch, caplog):
+    import logging
+
+    fake = FakeWebSocket(
+        [
+            '{"result":null,"id":1}',
+            event_payload(closed=False, event_time=OPEN_MS + 1000),
+            payload(closed=True),
+        ]
+    )
+    monkeypatch.setattr("app.market.websocket.websockets.connect", lambda _url: fake)
+
+    stream = BinanceSpotKlineStream(symbols=("BTCUSDT",), heartbeat_interval=300.0)
+
+    with caplog.at_level(logging.INFO):
+        events = asyncio.run(collect_stream_events(stream))
+
+    assert len(events) == 2
+    heartbeat_records = [
+        r for r in caplog.records if "WebSocket heartbeat: receiving live ticks..." in r.message
+    ]
+    assert len(heartbeat_records) == 0
+
+
+def test_ws_recv_exception_logs_explicit_error_and_reconnects(monkeypatch, caplog):
+    import logging
+
+    fake1 = FakeWebSocket(
+        [
+            '{"result":null,"id":1}',
+            ConnectionResetError("Connection lost to remote host"),
+        ]
+    )
+    fake2 = FakeWebSocket(
+        [
+            '{"result":null,"id":1}',
+            payload(closed=True),
+        ]
+    )
+    connections = [fake1, fake2]
+
+    def mock_connect(url):
+        return connections.pop(0)
+
+    monkeypatch.setattr("app.market.websocket.websockets.connect", mock_connect)
+
+    stream = BinanceSpotKlineStream(
+        symbols=("BTCUSDT",),
+        reconnect_delay=0.01,
+        max_reconnects=2,
+    )
+
+    with caplog.at_level(logging.INFO):
+        candles = asyncio.run(collect_stream_candles(stream))
+
+    assert len(candles) == 1
+    assert candles[0].close == Decimal("42050.12345678")
+
+    error_records = [
+        r for r in caplog.records if r.levelname == "ERROR" and "recv error" in r.message
+    ]
+    assert len(error_records) == 1
+    assert "ConnectionResetError" in error_records[0].message
+    assert any("Triggering WebSocket reconnect" in r.message for r in caplog.records)
+
+
+def test_ws_recv_exceeds_max_reconnects(monkeypatch, caplog):
+    import logging
+
+    def mock_connect(url):
+        return FakeWebSocket([ConnectionError("Network down")])
+
+    monkeypatch.setattr("app.market.websocket.websockets.connect", mock_connect)
+
+    stream = BinanceSpotKlineStream(
+        symbols=("BTCUSDT",),
+        reconnect_delay=0.01,
+        max_reconnects=2,
+    )
+
+    with caplog.at_level(logging.ERROR):
+        candles = asyncio.run(collect_stream_candles(stream))
+
+    assert len(candles) == 0
+    assert any("Exceeded maximum WebSocket reconnect attempts" in r.message for r in caplog.records)
+
+
+def test_parse_candle_returns_candle_only_when_closed():
+    from app.trading.websocket import parse_candle
+
+    # 1. Closed candle yields Candle
+    closed_c = parse_candle(payload(closed=True))
+    assert isinstance(closed_c, Candle)
+    assert closed_c.symbol == "BTCUSDT"
+    assert closed_c.close == Decimal("42050.12345678")
+
+    # 2. Forming candle returns None
+    forming_c = parse_candle(payload(closed=False))
+    assert forming_c is None
+
+    # 3. Subscription acknowledgement returns None
+    ack_c = parse_candle('{"result":null,"id":1}')
+    assert ack_c is None
+
+
+def test_events_yields_closed_candles_without_swallowing(monkeypatch):
+    fake = FakeWebSocket(
+        [
+            '{"result":null,"id":1}',
+            payload(closed=True, t=OPEN_MS, T=CLOSE_MS),
+            payload(
+                closed=True,
+                t=OPEN_MS + 3_600_000,
+                T=CLOSE_MS + 3_600_000,
+                h="43500.0",
+                c="43000.0",
+            ),
+        ]
+    )
+    monkeypatch.setattr("app.market.websocket.websockets.connect", lambda _url: fake)
+    stream = BinanceSpotKlineStream(symbols=("BTCUSDT",))
+
+    events = asyncio.run(collect_stream_events(stream))
+    assert len(events) == 2
+    assert all(isinstance(e, Candle) for e in events)
+    assert events[0].close == Decimal("42050.12345678")
+    assert events[1].close == Decimal("43000.0")
+
+
+def test_events_yields_both_open_observations_and_closed_candles(monkeypatch):
+    from app.market.models import CandleOpenObservation
+
+    fake = FakeWebSocket(
+        [
+            '{"result":null,"id":1}',
+            # Bar 1: open observation, intermediate forming tick, and close
+            event_payload(closed=False, t=OPEN_MS, T=CLOSE_MS, event_time=OPEN_MS + 1000),
+            event_payload(closed=False, t=OPEN_MS, T=CLOSE_MS, event_time=OPEN_MS + 2000),
+            event_payload(closed=True, t=OPEN_MS, T=CLOSE_MS, h="42600", c="42500"),
+            # Bar 2: open observation and close
+            event_payload(
+                closed=False,
+                t=OPEN_MS + 3_600_000,
+                T=CLOSE_MS + 3_600_000,
+                event_time=OPEN_MS + 3_601_000,
+                o="42500",
+            ),
+            event_payload(
+                closed=True,
+                t=OPEN_MS + 3_600_000,
+                T=CLOSE_MS + 3_600_000,
+                o="42500",
+                h="43500",
+                c="43200",
+            ),
+        ]
+    )
+    monkeypatch.setattr("app.market.websocket.websockets.connect", lambda _url: fake)
+    stream = BinanceSpotKlineStream(symbols=("BTCUSDT",))
+
+    events = asyncio.run(collect_stream_events(stream))
+    assert len(events) == 4
+    # Event 0: Bar 1 open observation
+    assert isinstance(events[0], CandleOpenObservation)
+    assert events[0].open_time == datetime(2024, 1, 1, 0, 0, tzinfo=timezone.utc)
+    # Event 1: Bar 1 closed candle
+    assert isinstance(events[1], Candle)
+    assert events[1].close == Decimal("42500")
+    # Event 2: Bar 2 open observation
+    assert isinstance(events[2], CandleOpenObservation)
+    assert events[2].open_time == datetime(2024, 1, 1, 1, 0, tzinfo=timezone.utc)
+    # Event 3: Bar 2 closed candle
+    assert isinstance(events[3], Candle)
+    assert events[3].close == Decimal("43200")

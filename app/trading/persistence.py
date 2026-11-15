@@ -14,6 +14,8 @@ from sqlalchemy.orm import Session
 
 from app.backtest.models import Position, Trade
 from app.database.paper_models import PaperSignalRecord, PaperTradeRecord
+from app.market.models import Candle
+from app.market.repository import persist_candles
 from app.strategy.breakout import BreakoutSignal
 from app.trading.paper import PaperExecutor
 
@@ -30,6 +32,25 @@ class DatabaseAlertHandler:
             self.session_factory = SessionLocal
         else:
             self.session_factory = session_factory
+
+    def on_candle_closed(self, candle: Candle) -> None:
+        """Persist a completed candle into the database."""
+        try:
+            session = self.session_factory()
+            try:
+                persist_candles(session, [candle])
+            except Exception:
+                session.rollback()
+                raise
+            finally:
+                session.close()
+        except Exception as exc:
+            logger.error(
+                "Failed to persist closed candle for %s: %s",
+                candle.symbol,
+                exc,
+                exc_info=True,
+            )
 
     def on_signal_generated(self, signal: BreakoutSignal, explanation: str) -> None:
         """Persist a newly generated breakout signal and its AI explanation."""
